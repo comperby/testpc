@@ -85,6 +85,23 @@
 
 После сохранения ошибка MC3065 исчезнет.
 
+### Если компилятор XAML сообщает «Property "Spacing" does not exist» (MC3072)
+
+Свойство `Spacing` отсутствует в `StackPanel` WPF и доступно только в WinUI/UWP.
+Начиная с текущей версии проекта элементы интерфейса используют отступы через `Margin`,
+поэтому обновление до последнего состояния (`git pull`) устраняет ошибку автоматически.
+При необходимости исправить старую копию вручную, откройте файл `Views/SettingsWindow.xaml`
+и удалите атрибут `Spacing`, задав отступы на дочерних кнопках, например:
+
+```xml
+<StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+  <Button Margin="0 0 10 0" ... />
+  <Button ... />
+</StackPanel>
+```
+
+После сохранения пересоберите решение (`dotnet build ServiceBench.sln -c Release`).
+
 ## Структура задач VS Code
 
 В каталоге `.vscode` добавлены преднастроенные задачи (`tasks.json`):
