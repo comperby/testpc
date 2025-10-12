@@ -1,0 +1,151 @@
+<Window x:Class="ServiceBench.App.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:ServiceBench.App.ViewModels"
+        Title="ServiceBench — автоматизированный стенд"
+        Height="900" Width="1200"
+        mc:Ignorable="d">
+    <Window.DataContext>
+        <vm:MainViewModel />
+    </Window.DataContext>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid Margin="20" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnDefinitions="*">
+            <GroupBox Header="Выбор программ" Margin="0 0 0 10">
+                <StackPanel Orientation="Horizontal" Margin="10">
+                    <CheckBox Content="AIDA64" IsChecked="{Binding Plan.UseAida}" Margin="0 0 20 0"/>
+                    <CheckBox Content="OCCT" IsChecked="{Binding Plan.UseOcct}" Margin="0 0 20 0"/>
+                    <CheckBox Content="FurMark" IsChecked="{Binding Plan.UseFurmark}"/>
+                </StackPanel>
+            </GroupBox>
+
+            <GroupBox Header="AIDA64 SST" Grid.Row="1" Margin="0 0 0 10">
+                <Grid Margin="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <CheckBox Content="CPU" IsChecked="{Binding Plan.AidaCpu}"/>
+                        <CheckBox Content="FPU" IsChecked="{Binding Plan.AidaFpu}"/>
+                        <CheckBox Content="Stress cache" IsChecked="{Binding Plan.AidaCache}"/>
+                        <CheckBox Content="Stress system memory" IsChecked="{Binding Plan.AidaMemory}"/>
+                        <CheckBox Content="Stress local disks" IsChecked="{Binding Plan.AidaDisk}"/>
+                        <CheckBox Content="Stress GPU" IsChecked="{Binding Plan.AidaGpu}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Grid.Column="1" Margin="20 0 0 0" VerticalAlignment="Center">
+                        <TextBlock Text="Длительность (мин):" VerticalAlignment="Center" Margin="0 0 10 0"/>
+                        <TextBox Width="60" Text="{Binding Plan.AidaDurationMinutes}"/>
+                    </StackPanel>
+                </Grid>
+            </GroupBox>
+
+            <GroupBox Header="OCCT 14.2.6 — профили" Grid.Row="2" Margin="0 0 0 10">
+                <StackPanel Margin="10">
+                    <StackPanel Orientation="Horizontal" Margin="0 0 0 5">
+                        <TextBlock Text="CPU Small (AVX2 ON)" Width="200" VerticalAlignment="Center"/>
+                        <TextBlock Text="Длительность (мин):" VerticalAlignment="Center" Margin="0 0 10 0"/>
+                        <TextBox Width="60" Text="{Binding Plan.OcctCpuMinutes}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0 0 0 5">
+                        <TextBlock Text="GPU 3D" Width="200" VerticalAlignment="Center"/>
+                        <TextBlock Text="Длительность (мин):" VerticalAlignment="Center" Margin="0 0 10 0"/>
+                        <TextBox Width="60" Text="{Binding Plan.OcctGpuMinutes}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="VRAM" Width="200" VerticalAlignment="Center"/>
+                        <TextBlock Text="Длительность (мин):" VerticalAlignment="Center" Margin="0 0 10 0"/>
+                        <TextBox Width="60" Text="{Binding Plan.OcctVramMinutes}"/>
+                    </StackPanel>
+                    <TextBlock Text="Задержка между профилями: 10 секунд" Foreground="Gray" Margin="0 10 0 0"/>
+                </StackPanel>
+            </GroupBox>
+
+            <GroupBox Header="FurMark 2.9.0.0" Grid.Row="3" Margin="0 0 0 10">
+                <Grid Margin="10" RowDefinitions="Auto,Auto,Auto,Auto">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Пресет разрешения:"/>
+                        <ComboBox ItemsSource="{Binding FurmarkPresets}" SelectedItem="{Binding Plan.SelectedFurmarkPreset}" Width="200"/>
+                        <CheckBox Content="Custom" IsChecked="{Binding Plan.FurmarkCustom}" Margin="0 10 0 0"/>
+                        <StackPanel Orientation="Horizontal" Margin="0 5 0 0">
+                            <TextBlock Text="Ширина:" VerticalAlignment="Center" Margin="0 0 10 0"/>
+                            <TextBox Width="60" Text="{Binding Plan.FurmarkWidth}" IsEnabled="{Binding Plan.FurmarkCustom}"/>
+                            <TextBlock Text="Высота:" VerticalAlignment="Center" Margin="20 0 10 0"/>
+                            <TextBox Width="60" Text="{Binding Plan.FurmarkHeight}" IsEnabled="{Binding Plan.FurmarkCustom}"/>
+                        </StackPanel>
+                        <CheckBox Content="Fullscreen" IsChecked="{Binding Plan.FurmarkFullscreen}" Margin="0 10 0 0"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Grid.Column="1" Margin="20 0 0 0" VerticalAlignment="Top">
+                        <TextBlock Text="Длительность (мин):" VerticalAlignment="Center" Margin="0 0 10 0"/>
+                        <TextBox Width="60" Text="{Binding Plan.FurmarkMinutes}"/>
+                    </StackPanel>
+                </Grid>
+            </GroupBox>
+
+            <GroupBox Header="Режим прогона и опции" Grid.Row="4" Margin="0 0 0 10">
+                <StackPanel Margin="10">
+                    <StackPanel Orientation="Horizontal" Margin="0 0 0 5">
+                        <TextBlock Text="Тег:" VerticalAlignment="Center" Margin="0 0 10 0"/>
+                        <ComboBox Width="150"
+                                  SelectedValuePath="Content"
+                                  SelectedValue="{Binding RunTag}">
+                            <ComboBoxItem Content="before" />
+                            <ComboBoxItem Content="after" />
+                            <ComboBoxItem Content="custom" />
+                        </ComboBox>
+                        <TextBox Width="150" Margin="10 0 0 0" Text="{Binding CustomRunTag}" IsEnabled="{Binding IsCustomTag}"/>
+                    </StackPanel>
+                    <CheckBox Content="Сохранять CSV AIDA" IsChecked="{Binding Plan.SaveAidaCsv}"/>
+                    <CheckBox Content="Сжатие скриншотов" IsChecked="{Binding Plan.CompressScreenshots}"/>
+                </StackPanel>
+            </GroupBox>
+
+            <StackPanel Orientation="Horizontal" Grid.Row="5" Margin="0 0 0 10" HorizontalAlignment="Left">
+                <Button Content="Старт" Command="{Binding StartCommand}" Width="120" Margin="0 0 10 0"/>
+                <Button Content="СТОП (Esc)" Command="{Binding StopCommand}" Width="120" Margin="0 0 10 0"/>
+                <Button Content="Открыть папку устройства" Command="{Binding OpenDeviceFolderCommand}" Width="180" Margin="0 0 10 0"/>
+                <Button Content="Открыть дашборд" Command="{Binding OpenDashboardCommand}" Width="160" Margin="0 0 10 0"/>
+                <Button Content="Настройки" Command="{Binding OpenSettingsCommand}" Width="120"/>
+            </StackPanel>
+
+            <Grid Grid.Row="6" Margin="0 0 0 10" ColumnDefinitions="2*,3*">
+                <StackPanel>
+                    <TextBlock Text="Статус:" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" Margin="0 5 0 0"/>
+                    <TextBlock Text="Лог:" FontWeight="Bold" Margin="0 10 0 0"/>
+                    <TextBox Text="{Binding LogText}" Height="150" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+                </StackPanel>
+                <Grid Grid.Column="1">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="Телеметрия (live)" FontWeight="Bold"/>
+                    <UniformGrid Rows="7" Columns="2" Grid.Row="1" Margin="0 5 0 0">
+                        <TextBlock Text="CPU °C:" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding LiveTelemetry.CpuTemp}"/>
+                        <TextBlock Text="GPU °C:" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding LiveTelemetry.GpuTemp}"/>
+                        <TextBlock Text="CPU MHz:" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding LiveTelemetry.CpuFreq}"/>
+                        <TextBlock Text="GPU Core MHz:" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding LiveTelemetry.GpuCore}"/>
+                        <TextBlock Text="GPU Mem MHz:" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding LiveTelemetry.GpuMem}"/>
+                        <TextBlock Text="CPU Fan RPM:" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding LiveTelemetry.CpuFan}"/>
+                        <TextBlock Text="GPU Fan RPM:" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding LiveTelemetry.GpuFan}"/>
+                    </UniformGrid>
+                </Grid>
+            </Grid>
+
+            <TextBlock Grid.Row="7" Text="Esc — экстренный стоп" HorizontalAlignment="Right" FontStyle="Italic"/>
+        </Grid>
+    </ScrollViewer>
+</Window>
