@@ -7,6 +7,9 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
+using DrawingSize = System.Drawing.Size;
+using WindowsSize = System.Windows.Size;
+
 namespace ServiceBench.App.Services;
 
 public class ScreenshotService
@@ -45,8 +48,8 @@ public class ScreenshotService
         {
             return element.Dispatcher.Invoke(() =>
             {
-                element.Measure(new Size(element.ActualWidth, element.ActualHeight));
-                element.Arrange(new Rect(new Size(element.ActualWidth, element.ActualHeight)));
+                element.Measure(new WindowsSize(element.ActualWidth, element.ActualHeight));
+                element.Arrange(new Rect(new WindowsSize(element.ActualWidth, element.ActualHeight)));
                 element.UpdateLayout();
 
                 var width = (int)Math.Max(1, Math.Round(element.ActualWidth));
@@ -88,7 +91,7 @@ public class ScreenshotService
         var height = rect.Bottom - rect.Top;
         using var bitmap = new Bitmap(width, height);
         using var graphics = Graphics.FromImage(bitmap);
-        graphics.CopyFromScreen(rect.Left, rect.Top, 0, 0, new Size(width, height));
+        graphics.CopyFromScreen(rect.Left, rect.Top, 0, 0, new DrawingSize(width, height));
         bitmap.Save(filePath, ImageFormat.Png);
         return filePath;
     }
