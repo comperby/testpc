@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <title>ServiceBench run report</title>
+    <link rel="stylesheet" href="../assets/styles.css" />
+    <script src="../assets/chart.min.js"></script>
+</head>
+<body>
+    <header>
+        <div class="brand-info">
+            <h1>ServiceBench — отчёт</h1>
+            <p>{{companyName}}</p>
+            <p>{{address}}</p>
+            <p>{{workingHours}}</p>
+        </div>
+        {{logo}}
+    </header>
+    <main>
+        <section>
+            <h2>Устройство</h2>
+            <p>{{device}}</p>
+            <p>Тег: {{tag}}</p>
+            <p>Статус: {{status}}</p>
+            <p>Начало: {{started}}</p>
+            <p>Окончание: {{ended}}</p>
+            <p>Длительность: {{duration}}</p>
+        </section>
+        <section>
+            <h2>Графики</h2>
+            <canvas id="chartTemp"></canvas>
+            <canvas id="chartFreq"></canvas>
+            <canvas id="chartFan"></canvas>
+        </section>
+        <section>
+            <h2>Скриншоты</h2>
+            <div class="gallery" id="screens"></div>
+        </section>
+    </main>
+    <script>
+        async function loadData() {
+            const response = await fetch('run.json');
+            const data = await response.json();
+            const labels = data.telemetry.timeline.map(x => x.t);
+            const cpuT = data.telemetry.timeline.map(x => x.cpuT);
+            const gpuT = data.telemetry.timeline.map(x => x.gpuT);
+            const cpuFreq = data.telemetry.timeline.map(x => x.cpuMHz);
+            const gpuCore = data.telemetry.timeline.map(x => x.gpuCore);
+            const gpuMem = data.telemetry.timeline.map(x => x.gpuMem);
+            const cpuFan = data.telemetry.timeline.map(x => x.cpuRpm);
+            const gpuFan = data.telemetry.timeline.map(x => x.gpuRpm);
+
+            const ctxTemp = document.getElementById('chartTemp');
+            new Chart(ctxTemp, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        { label: 'CPU °C', data: cpuT, borderColor: '#e84118', fill: false },
+                        { label: 'GPU °C', data: gpuT, borderColor: '#0097e6', fill: false }
+                    ]
+                }
+            });
+
+            const ctxFreq = document.getElementById('chartFreq');
+            new Chart(ctxFreq, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        { label: 'CPU MHz', data: cpuFreq, borderColor: '#44bd32', fill: false },
+                        { label: 'GPU Core MHz', data: gpuCore, borderColor: '#8c7ae6', fill: false },
+                        { label: 'GPU Mem MHz', data: gpuMem, borderColor: '#487eb0', fill: false }
+                    ]
+                }
+            });
+
+            const ctxFan = document.getElementById('chartFan');
+            new Chart(ctxFan, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        { label: 'CPU Fan RPM', data: cpuFan, borderColor: '#fbc531', fill: false },
+                        { label: 'GPU Fan RPM', data: gpuFan, borderColor: '#273c75', fill: false }
+                    ]
+                }
+            });
+
+            const container = document.getElementById('screens');
+            data.screens.forEach(screen => {
+                const img = document.createElement('img');
+                img.src = screen.file;
+                img.alt = `Screenshot ${screen.t}`;
+                container.appendChild(img);
+            });
+        }
+        loadData();
+    </script>
+</body>
+</html>
