@@ -60,6 +60,31 @@
 
 Если PowerShell недоступен, внесите правки вручную по инструкции из предыдущего раздела.
 
+### Если XAML-редактор сообщает «RowDefinitions is read-only» (MC3065)
+
+Эта ошибка появляется при попытке задать строки/столбцы `Grid` строкой (`RowDefinitions="..."`).
+В актуальной версии проекта разметка уже переведена на корректный синтаксис с вложенными
+элементами `<Grid.RowDefinitions>`/`<Grid.ColumnDefinitions>`. Обновите проект до последней
+версии (`git pull`) и пересоберите решение. Если требуется исправить существующую копию
+вручную, откройте `Views/MainWindow.xaml` и `Views/SettingsWindow.xaml` и замените атрибуты
+`RowDefinitions`/`ColumnDefinitions` на блоки вида:
+
+```xml
+<Grid>
+  <Grid.RowDefinitions>
+    <RowDefinition Height="Auto"/>
+    ...
+  </Grid.RowDefinitions>
+  <Grid.ColumnDefinitions>
+    <ColumnDefinition Width="*"/>
+    ...
+  </Grid.ColumnDefinitions>
+  <!-- остальное содержимое -->
+</Grid>
+```
+
+После сохранения ошибка MC3065 исчезнет.
+
 ## Структура задач VS Code
 
 В каталоге `.vscode` добавлены преднастроенные задачи (`tasks.json`):

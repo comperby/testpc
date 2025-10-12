@@ -8,9 +8,24 @@
     <Window.DataContext>
         <vm:SettingsViewModel />
     </Window.DataContext>
-    <Grid Margin="20" RowDefinitions="Auto,* ,Auto">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
         <GroupBox Header="Пути к утилитам" Margin="0 0 0 10">
-            <Grid Margin="10" RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="Auto,*,Auto">
+            <Grid Margin="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
                 <TextBlock Text="AIDA64:" VerticalAlignment="Center"/>
                 <TextBox Grid.Column="1" Margin="10 0" Text="{Binding Settings.AidaPath}"/>
                 <Button Grid.Column="2" Content="..." Width="30" Command="{Binding BrowseAidaCommand}"/>
@@ -26,7 +41,17 @@
         </GroupBox>
 
         <GroupBox Grid.Row="1" Header="Брендинг" Margin="0 0 0 10">
-            <Grid Margin="10" RowDefinitions="Auto,Auto,Auto,Auto" ColumnDefinitions="Auto,*">
+            <Grid Margin="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
                 <TextBlock Text="Название организации:" VerticalAlignment="Center"/>
                 <TextBox Grid.Column="1" Margin="10 0" Text="{Binding Settings.Brand.CompanyName}"/>
                 <TextBlock Grid.Row="1" Text="Адрес:" VerticalAlignment="Center"/>
