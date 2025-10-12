@@ -1,0 +1,57 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Restore",
+      "type": "shell",
+      "command": "dotnet",
+      "args": [
+        "restore",
+        "ServiceBench.sln"
+      ],
+      "group": "build",
+      "problemMatcher": ["$msCompile"],
+      "presentation": {
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "Build",
+      "type": "shell",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "ServiceBench.sln",
+        "-c",
+        "Release"
+      ],
+      "dependsOn": "Restore",
+      "group": "build",
+      "problemMatcher": ["$msCompile"],
+      "presentation": {
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "Publish Single File",
+      "type": "shell",
+      "command": "dotnet",
+      "args": [
+        "publish",
+        "ServiceBench.App",
+        "-c",
+        "Release",
+        "-r",
+        "win-x64",
+        "-p:PublishSingleFile=true",
+        "-p:IncludeAllContentForSelfExtract=true",
+        "-p:PublishTrimmed=false"
+      ],
+      "group": "build",
+      "problemMatcher": ["$msCompile"],
+      "presentation": {
+        "reveal": "always"
+      }
+    }
+  ]
+}

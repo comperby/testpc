@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Management" Version="8.0.0" />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="Assets\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <Resource Include="Assets\**\*" />
+  </ItemGroup>
+
+  <UsingTask TaskName="ClearReadOnlyAttributes"
+             TaskFactory="CodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Files ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.IO" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        foreach (var item in Files)
+        {
+          var path = item.ItemSpec;
+          if (!File.Exists(path))
+          {
+            continue;
+          }
+
+          var attributes = File.GetAttributes(path);
+          if ((attributes & FileAttributes.ReadOnly) == FileAttributes.ReadOnly)
+          {
+            File.SetAttributes(path, attributes & ~FileAttributes.ReadOnly);
+          }
+        }
+
+        return true;
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="EnsureObjWritable" BeforeTargets="ResolveReferences">
+    <ItemGroup>
+      <ObjFiles Include="$(BaseIntermediateOutputPath)**\*.*" />
+    </ItemGroup>
+    <ClearReadOnlyAttributes Files="@(ObjFiles)" />
+  </Target>
+</Project>
