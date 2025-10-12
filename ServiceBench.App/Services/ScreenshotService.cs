@@ -3,6 +3,9 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace ServiceBench.App.Services;
 
@@ -29,6 +32,43 @@ public class ScreenshotService
         public int Top;
         public int Right;
         public int Bottom;
+    }
+
+    public bool SaveElementPng(FrameworkElement? element, string filePath)
+    {
+        if (element == null)
+        {
+            return false;
+        }
+
+        try
+        {
+            return element.Dispatcher.Invoke(() =>
+            {
+                element.Measure(new Size(element.ActualWidth, element.ActualHeight));
+                element.Arrange(new Rect(new Size(element.ActualWidth, element.ActualHeight)));
+                element.UpdateLayout();
+
+                var width = (int)Math.Max(1, Math.Round(element.ActualWidth));
+                var height = (int)Math.Max(1, Math.Round(element.ActualHeight));
+                if (width <= 0 || height <= 0)
+                {
+                    return false;
+                }
+
+                var rtb = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+                rtb.Render(element);
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(rtb));
+                using var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write);
+                encoder.Save(stream);
+                return true;
+            });
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public string CaptureWindow(string windowTitleSubstring, string filePath)

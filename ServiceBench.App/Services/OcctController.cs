@@ -30,17 +30,17 @@ public class OcctController
         _processes.Clear();
 
         bool delay = false;
-        if (plan.OcctCpuMinutes > 0)
+        if (plan.OcctCpuSmall && plan.OcctCpuMinutes > 0)
         {
             _processes.Add(await StartProfileAsync("OCCT CPU Small", plan.OcctCpuMinutes, delay, token));
             delay = true;
         }
-        if (plan.OcctGpuMinutes > 0)
+        if (plan.OcctGpu3D && plan.OcctGpuMinutes > 0)
         {
             _processes.Add(await StartProfileAsync("OCCT GPU 3D", plan.OcctGpuMinutes, delay, token));
             delay = true;
         }
-        if (plan.OcctVramMinutes > 0)
+        if (plan.OcctVram && plan.OcctVramMinutes > 0)
         {
             _processes.Add(await StartProfileAsync("OCCT VRAM", plan.OcctVramMinutes, delay, token));
         }

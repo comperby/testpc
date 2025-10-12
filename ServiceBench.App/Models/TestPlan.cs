@@ -14,8 +14,11 @@ public class TestPlan
     public bool AidaGpu { get; set; }
     public int AidaDurationMinutes { get; set; } = 2;
 
+    public bool OcctCpuSmall { get; set; } = true;
     public int OcctCpuMinutes { get; set; } = 5;
+    public bool OcctGpu3D { get; set; } = true;
     public int OcctGpuMinutes { get; set; } = 5;
+    public bool OcctVram { get; set; } = true;
     public int OcctVramMinutes { get; set; } = 5;
 
     public string SelectedFurmarkPreset { get; set; } = "1920x1080";

@@ -22,7 +22,7 @@ public class MainViewModel : ViewModelBase
     private readonly AidaController _aida;
     private readonly OcctController _occt;
     private readonly FurMarkController _furmark;
-    private readonly TelemetryCollector _telemetry;
+    private readonly HwTelemetryService _hwTelemetry;
     private readonly ScreenshotService _screenshotService = new();
     private readonly DeviceDetector _deviceDetector = new();
     private readonly HotkeyService _hotkeyService = new();
@@ -50,17 +50,25 @@ public class MainViewModel : ViewModelBase
     private bool _isCustomTag;
     private string? _stopStatus;
 
+    private string _liveCpuTemp = "-";
+    private string _liveGpuTemp = "-";
+    private string _liveCpuFreq = "-";
+    private string _liveGpuCore = "-";
+    private string _liveGpuMem = "-";
+    private string _liveCpuFan = "-";
+    private string _liveGpuFan = "-";
+
     public MainViewModel()
     {
         _config.Initialize(_settingsService);
         _reportGenerator = new ReportGenerator(_config);
         Plan = new TestPlan();
-        LiveTelemetry = new LiveTelemetry();
         _aida = new AidaController(_config, _processRunner);
         _occt = new OcctController(_config, _processRunner);
         _furmark = new FurMarkController(_config, _processRunner);
-        _telemetry = new TelemetryCollector(_config);
-        _telemetry.SampleCollected += OnSampleCollected;
+        _hwTelemetry = new HwTelemetryService();
+        _hwTelemetry.OnSample += OnHwSample;
+        _hwTelemetry.Start(1);
         _hotkeyService.EscPressed += (_, _) => StopByUser();
 
         StartCommand = new RelayCommand(async () => await StartAsync(), () => _runCts == null);
@@ -71,7 +79,6 @@ public class MainViewModel : ViewModelBase
     }
 
     public TestPlan Plan { get; }
-    public LiveTelemetry LiveTelemetry { get; }
     public ObservableCollection<string> FurmarkPresets => _furmarkPresets;
     public RelayCommand StartCommand { get; }
     public RelayCommand StopCommand { get; }
@@ -82,8 +89,16 @@ public class MainViewModel : ViewModelBase
     public string StatusMessage
     {
         get => _statusMessage;
-        set => SetField(ref _statusMessage, value);
+        set
+        {
+            if (SetField(ref _statusMessage, value))
+            {
+                RaisePropertyChanged(nameof(Status));
+            }
+        }
     }
+
+    public string Status => StatusMessage;
 
     public string LogText
     {
@@ -119,13 +134,56 @@ public class MainViewModel : ViewModelBase
         set => SetField(ref _isCustomTag, value);
     }
 
+    public string LiveCpuTemp
+    {
+        get => _liveCpuTemp;
+        set => SetField(ref _liveCpuTemp, value);
+    }
+
+    public string LiveGpuTemp
+    {
+        get => _liveGpuTemp;
+        set => SetField(ref _liveGpuTemp, value);
+    }
+
+    public string LiveCpuFreq
+    {
+        get => _liveCpuFreq;
+        set => SetField(ref _liveCpuFreq, value);
+    }
+
+    public string LiveGpuCore
+    {
+        get => _liveGpuCore;
+        set => SetField(ref _liveGpuCore, value);
+    }
+
+    public string LiveGpuMem
+    {
+        get => _liveGpuMem;
+        set => SetField(ref _liveGpuMem, value);
+    }
+
+    public string LiveCpuFan
+    {
+        get => _liveCpuFan;
+        set => SetField(ref _liveCpuFan, value);
+    }
+
+    public string LiveGpuFan
+    {
+        get => _liveGpuFan;
+        set => SetField(ref _liveGpuFan, value);
+    }
+
     public void AttachHotkey(Window window) => _hotkeyService.Register(window);
 
     public void DetachHotkey()
     {
         _hotkeyService.Unregister();
-        _telemetry.SampleCollected -= OnSampleCollected;
-        _telemetry.Stop();
+        _hwTelemetry.OnSample -= OnHwSample;
+        _hwTelemetry.Stop();
+        _hwTelemetry.Dispose();
     }
 
     private async Task StartAsync()
@@ -194,9 +252,18 @@ public class MainViewModel : ViewModelBase
             }
             if (Plan.UseOcct)
             {
-                tests.Add(new RunJsonTest { Name = "OCCT CPU Small", DurationSec = Plan.OcctCpuMinutes * 60 });
-                tests.Add(new RunJsonTest { Name = "OCCT GPU 3D", DurationSec = Plan.OcctGpuMinutes * 60 });
-                tests.Add(new RunJsonTest { Name = "OCCT VRAM", DurationSec = Plan.OcctVramMinutes * 60 });
+                if (Plan.OcctCpuSmall)
+                {
+                    tests.Add(new RunJsonTest { Name = "OCCT CPU Small", DurationSec = Plan.OcctCpuMinutes * 60 });
+                }
+                if (Plan.OcctGpu3D)
+                {
+                    tests.Add(new RunJsonTest { Name = "OCCT GPU 3D", DurationSec = Plan.OcctGpuMinutes * 60 });
+                }
+                if (Plan.OcctVram)
+                {
+                    tests.Add(new RunJsonTest { Name = "OCCT VRAM", DurationSec = Plan.OcctVramMinutes * 60 });
+                }
             }
             if (Plan.UseFurmark)
             {
@@ -205,7 +272,6 @@ public class MainViewModel : ViewModelBase
             _currentRun.Tests = tests;
 
             _reportGenerator.EnsureAssets(_device);
-            _telemetry.Start(_csvPath);
             StartScreenshotTimer();
             CaptureScreenshot("0000_sensors.png");
 
@@ -260,8 +326,26 @@ public class MainViewModel : ViewModelBase
                 try
                 {
                     await _occt.StartAsync(Plan, token);
-                    var totalMinutes = Math.Max(1, Plan.OcctCpuMinutes + Plan.OcctGpuMinutes + Plan.OcctVramMinutes);
-                    await WaitWithCancellation(TimeSpan.FromMinutes(totalMinutes), token);
+                    var totalMinutes = 0;
+                    var profiles = 0;
+                    if (Plan.OcctCpuSmall)
+                    {
+                        totalMinutes += Plan.OcctCpuMinutes;
+                        profiles++;
+                    }
+                    if (Plan.OcctGpu3D)
+                    {
+                        totalMinutes += Plan.OcctGpuMinutes;
+                        profiles++;
+                    }
+                    if (Plan.OcctVram)
+                    {
+                        totalMinutes += Plan.OcctVramMinutes;
+                        profiles++;
+                    }
+
+                    var wait = TimeSpan.FromMinutes(Math.Max(1, totalMinutes)) + TimeSpan.FromSeconds(Math.Max(0, profiles - 1) * 10);
+                    await WaitWithCancellation(wait, token);
                 }
                 finally
                 {
@@ -295,7 +379,6 @@ public class MainViewModel : ViewModelBase
         }
         finally
         {
-            _telemetry.Stop();
             StopScreenshotTimer();
         }
     }
@@ -328,6 +411,7 @@ public class MainViewModel : ViewModelBase
             _ => "Тест прерван"
         };
 
+        CaptureScreenshot($"final_{DateTime.Now:HHmmss}.png");
         FinishRun(status, reason);
 
         Application.Current?.Dispatcher.Invoke(() =>
@@ -370,6 +454,11 @@ public class MainViewModel : ViewModelBase
             "STOP_BY_USER" => "Остановлено пользователем",
             _ => "Ошибка"
         };
+
+        _currentRun = null;
+        _runFolder = null;
+        _csvPath = null;
+        _samples.Clear();
     }
 
     private void CalculatePeaks()
@@ -398,45 +487,28 @@ public class MainViewModel : ViewModelBase
         LogText = new StringBuilder(LogText).AppendLine($"[{DateTime.Now:HH:mm:ss}] {message}").ToString();
     }
 
-    private void OnSampleCollected(object? sender, TelemetrySample e)
+    private void OnHwSample(HwSample sample)
     {
-        Application.Current?.Dispatcher.Invoke(() =>
-        {
-            LiveTelemetry.CpuTemp = e.CpuTemp;
-            LiveTelemetry.GpuTemp = e.GpuTemp;
-            LiveTelemetry.CpuFreq = e.CpuFreq;
-            LiveTelemetry.GpuCore = e.GpuCore;
-            LiveTelemetry.GpuMem = e.GpuMem;
-            LiveTelemetry.CpuFan = e.CpuFan;
-            LiveTelemetry.GpuFan = e.GpuFan;
-        });
-
-        if (_currentRun == null)
-        {
-            return;
-        }
-
-        var start = _currentRun.Session.StartedAt;
-        lock (_lock)
-        {
-            var sample = new RunJsonTelemetrySample
-            {
-                T = (DateTime.UtcNow - start).TotalSeconds,
-                CpuT = e.CpuTemp,
-                GpuT = e.GpuTemp,
-                CpuRpm = e.CpuFan,
-                GpuRpm = e.GpuFan,
-                CpuMHz = e.CpuFreq,
-                GpuCore = e.GpuCore,
-                GpuMem = e.GpuMem
-            };
-            _samples.Add(sample);
-        }
-
-        CheckThresholds(e);
+        Application.Current?.Dispatcher.Invoke(() => UpdateLive(sample));
+        TryAutoStopOnLimits(sample);
+        AppendRunSample(sample);
     }
 
-    private void CheckThresholds(TelemetrySample sample)
+    private void UpdateLive(HwSample sample)
+    {
+        LiveCpuTemp = FormatValue(sample.CpuTemp, "F1");
+        LiveGpuTemp = FormatValue(sample.GpuTemp, "F1");
+        LiveCpuFreq = FormatValue(sample.CpuMHz, "F0");
+        LiveGpuCore = FormatValue(sample.GpuCoreMHz, "F0");
+        LiveGpuMem = FormatValue(sample.GpuMemMHz, "F0");
+        LiveCpuFan = FormatValue(sample.CpuFanRpm, "F0");
+        LiveGpuFan = FormatValue(sample.GpuFanRpm, "F0");
+    }
+
+    private static string FormatValue(double? value, string format)
+        => value.HasValue ? value.Value.ToString(format) : "-";
+
+    private void TryAutoStopOnLimits(HwSample sample)
     {
         if (_device == null || _runCts == null || _isStopping)
         {
@@ -444,11 +516,36 @@ public class MainViewModel : ViewModelBase
         }
 
         var cpuLimit = _device.Type == DeviceType.Laptop ? _config.LaptopCpuLimit : _config.DesktopCpuLimit;
-        if (sample.CpuTemp >= cpuLimit || sample.GpuTemp >= _config.GpuLimit)
+        if ((sample.CpuTemp ?? 0) >= cpuLimit || (sample.GpuTemp ?? 0) >= _config.GpuLimit)
         {
             _isStopping = true;
             _stopStatus = "STOP_BY_OVERHEAT";
             _runCts.Cancel();
+        }
+    }
+
+    private void AppendRunSample(HwSample sample)
+    {
+        if (_currentRun == null)
+        {
+            return;
+        }
+
+        lock (_lock)
+        {
+            var start = _currentRun.Session.StartedAt;
+            var elapsed = (sample.Ts.ToUniversalTime() - start).TotalSeconds;
+            _samples.Add(new RunJsonTelemetrySample
+            {
+                T = elapsed,
+                CpuT = sample.CpuTemp ?? 0,
+                GpuT = sample.GpuTemp ?? 0,
+                CpuRpm = sample.CpuFanRpm ?? 0,
+                GpuRpm = sample.GpuFanRpm ?? 0,
+                CpuMHz = sample.CpuMHz ?? 0,
+                GpuCore = sample.GpuCoreMHz ?? 0,
+                GpuMem = sample.GpuMemMHz ?? 0
+            });
         }
     }
 
@@ -516,12 +613,44 @@ public class MainViewModel : ViewModelBase
         try
         {
             var path = Path.Combine(_runFolder, "screenshots", fileName);
-            _screenshotService.CaptureWindow(Config.DefaultSensorWindowTitle, path);
-            _currentRun?.Screens.Add(new RunJsonScreen
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            var element = Application.Current?.Dispatcher.Invoke(() =>
             {
-                T = fileName.Replace("_sensors.png", string.Empty),
-                File = Path.Combine("screenshots", fileName).Replace('\\', '/')
+                if (Application.Current?.MainWindow is FrameworkElement windowRoot)
+                {
+                    return windowRoot.FindName("LivePanel") as FrameworkElement;
+                }
+
+                return null;
             });
+
+            var saved = false;
+            if (element != null)
+            {
+                saved = _screenshotService.SaveElementPng(element, path);
+            }
+
+            if (!saved)
+            {
+                try
+                {
+                    _screenshotService.CaptureWindow(Config.DefaultSensorWindowTitle, path);
+                    saved = true;
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+
+            if (saved && _currentRun != null)
+            {
+                _currentRun.Screens.Add(new RunJsonScreen
+                {
+                    T = Path.GetFileNameWithoutExtension(fileName),
+                    File = Path.Combine("screenshots", fileName).Replace('\\', '/')
+                });
+            }
         }
         catch (Exception ex)
         {
