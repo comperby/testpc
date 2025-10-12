@@ -19,40 +19,7 @@
     <Resource Include="Assets\**\*" />
   </ItemGroup>
 
-  <UsingTask TaskName="ClearReadOnlyAttributes"
-             TaskFactory="CodeTaskFactory"
-             AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
-    <ParameterGroup>
-      <Files ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
-    </ParameterGroup>
-    <Task>
-      <Using Namespace="System" />
-      <Using Namespace="System.IO" />
-      <Code Type="Fragment" Language="cs"><![CDATA[
-        foreach (var item in Files)
-        {
-          var path = item.ItemSpec;
-          if (!File.Exists(path))
-          {
-            continue;
-          }
-
-          var attributes = File.GetAttributes(path);
-          if ((attributes & FileAttributes.ReadOnly) == FileAttributes.ReadOnly)
-          {
-            File.SetAttributes(path, attributes & ~FileAttributes.ReadOnly);
-          }
-        }
-
-        return true;
-      ]]></Code>
-    </Task>
-  </UsingTask>
-
-  <Target Name="EnsureObjWritable" BeforeTargets="ResolveReferences">
-    <ItemGroup>
-      <ObjFiles Include="$(BaseIntermediateOutputPath)**\*.*" />
-    </ItemGroup>
-    <ClearReadOnlyAttributes Files="@(ObjFiles)" />
+  <Target Name="EnsureObjWritable" BeforeTargets="ResolveReferences" Condition="'$(OS)' == 'Windows_NT'">
+    <Exec Command="attrib -R &quot;$(BaseIntermediateOutputPath)*&quot; /S /D" IgnoreExitCode="true" />
   </Target>
 </Project>

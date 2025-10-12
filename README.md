@@ -23,6 +23,23 @@
 
 В некоторых случаях после распаковки архива Windows помечает вложенные файлы как read-only. Начиная с текущей версии проекта, при запуске `dotnet build`/`dotnet publish` права на файлы во внутренней папке `obj` автоматически снимаются, поэтому дополнительное ручное вмешательство не требуется. Если вы обновляете старую копию проекта, удалите каталоги `bin` и `obj` или снимите атрибут `Read-only` со всех файлов внутри них перед следующей сборкой.
 
+### Если при сборке запрашиваются справочные сборки «.NETFramework,Version=v6.0»
+
+Эта ошибка («error MSB3644: The reference assemblies for .NETFramework,Version=v6.0 were not found») появлялась из-за встроенной MSBuild-задачи, написанной на C# — для её компиляции требовались пакеты разработчика .NET Framework, которых нет в стандартной установке .NET SDK. Начиная с текущей версии проекта задача заменена простым вызовом `attrib`, поэтому дополнительная установка SDK больше не нужна. Чтобы исправить проблему:
+
+1. Обновите проект до последней версии (например, `git pull`).
+2. Повторите сборку: `dotnet build ServiceBench.sln -c Release`.
+
+Если вы не можете обновиться, откройте файл `ServiceBench.App/ServiceBench.App.csproj` и удалите блок `<UsingTask ...>`/`<ClearReadOnlyAttributes ...>`, заменив его на цель:
+
+```xml
+  <Target Name="EnsureObjWritable" BeforeTargets="ResolveReferences" Condition="'$(OS)' == 'Windows_NT'">
+    <Exec Command="attrib -R &quot;$(BaseIntermediateOutputPath)*&quot; /S /D" IgnoreExitCode="true" />
+  </Target>
+```
+
+После сохранения пересоберите проект — ошибка больше не появится.
+
 ## Структура задач VS Code
 
 В каталоге `.vscode` добавлены преднастроенные задачи (`tasks.json`):
