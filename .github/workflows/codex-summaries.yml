@@ -1,0 +1,69 @@
+name: codex-summaries
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+  workflow_dispatch:
+
+jobs:
+  summarize:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore ServiceBench.sln
+
+      - name: Generate summaries
+        shell: pwsh
+        env:
+          GITHUB_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+        run: |
+          pwsh ./tools/update-codex-summary.ps1
+
+      - name: Upload artifact (summaries)
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-summaries
+          path: |
+            CODex-SUMMARY.md
+            codex-summary.json
+
+      - name: Commit summaries back (push only)
+        if: ${{ github.event_name == 'push' }}
+        shell: pwsh
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CODex-SUMMARY.md codex-summary.json
+          git diff --cached --quiet && echo "No changes to commit" || (git commit -m "chore(ci): update Codex summaries [skip ci]" && git push)
+
+      - name: Comment on PR with summary (PR only)
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('CODex-SUMMARY.md', 'utf8');
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+
+            // try to update existing comment by this bot
+            const comments = await github.rest.issues.listComments({ owner, repo, issue_number });
+            const existing = comments.data.find(c => c.user.type === 'Bot' && c.body && c.body.startsWith('# Change Summary'));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
