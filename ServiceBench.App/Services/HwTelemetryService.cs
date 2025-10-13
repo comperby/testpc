@@ -13,7 +13,8 @@ public record HwSample(DateTime Ts,
     double? GpuFanRpm,
     double? CpuMHz,
     double? GpuCoreMHz,
-    double? GpuMemMHz);
+    double? GpuMemMHz,
+    double? GpuFanPct);
 
 public sealed class HwTelemetryService : IDisposable
 {
@@ -22,7 +23,8 @@ public sealed class HwTelemetryService : IDisposable
         IsCpuEnabled = true,
         IsGpuEnabled = true,
         IsMotherboardEnabled = true,
-        IsMemoryEnabled = true
+        IsMemoryEnabled = true,
+        IsControllerEnabled = true
     };
 
     private CancellationTokenSource? _cts;
@@ -78,7 +80,10 @@ public sealed class HwTelemetryService : IDisposable
                     => sensor.Hardware.HardwareType is HardwareType.GpuNvidia or HardwareType.GpuAmd;
 
                 var cpuTemp = Max(s => s.Hardware.HardwareType == HardwareType.Cpu && s.SensorType == SensorType.Temperature);
-                var cpuFan = Max(s => s.SensorType == SensorType.Fan && s.Name.Contains("CPU", StringComparison.OrdinalIgnoreCase));
+                var cpuFan = Max(s =>
+                    s.SensorType == SensorType.Fan &&
+                    (s.Name.Contains("CPU", StringComparison.OrdinalIgnoreCase) ||
+                     s.Hardware.HardwareType == HardwareType.Motherboard));
                 var cpuClock = Avg(s => s.Hardware.HardwareType == HardwareType.Cpu &&
                                         s.SensorType == SensorType.Clock &&
                                         (s.Name.Contains("Core", StringComparison.OrdinalIgnoreCase) ||
@@ -86,12 +91,15 @@ public sealed class HwTelemetryService : IDisposable
 
                 var gpuTemp = Max(s => IsGpu(s) && s.SensorType == SensorType.Temperature);
                 var gpuFan = Max(s => IsGpu(s) && s.SensorType == SensorType.Fan);
+                var gpuFanPct = Max(s => IsGpu(s) &&
+                                          s.SensorType == SensorType.Control &&
+                                          s.Name.Contains("Fan", StringComparison.OrdinalIgnoreCase));
                 var gpuCore = Avg(s => IsGpu(s) && s.SensorType == SensorType.Clock &&
                                         s.Name.Contains("Core", StringComparison.OrdinalIgnoreCase));
                 var gpuMem = Avg(s => IsGpu(s) && s.SensorType == SensorType.Clock &&
                                        s.Name.Contains("Memory", StringComparison.OrdinalIgnoreCase));
 
-                OnSample?.Invoke(new HwSample(DateTime.Now, cpuTemp, gpuTemp, cpuFan, gpuFan, cpuClock, gpuCore, gpuMem));
+                OnSample?.Invoke(new HwSample(DateTime.Now, cpuTemp, gpuTemp, cpuFan, gpuFan, cpuClock, gpuCore, gpuMem, gpuFanPct));
             }
             catch
             {

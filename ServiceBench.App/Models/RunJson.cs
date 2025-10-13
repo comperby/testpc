@@ -23,6 +23,9 @@ public class RunJson
 
     [JsonPropertyName("brand")]
     public RunJsonBrand Brand { get; set; } = new();
+
+    [JsonPropertyName("notes")]
+    public List<string> Notes { get; set; } = new();
 }
 
 public class RunJsonDevice
@@ -114,6 +117,10 @@ public class RunJsonTelemetrySample
 
     [JsonPropertyName("gpuMem")]
     public double GpuMem { get; set; }
+        = 0;
+
+    [JsonPropertyName("gpuFanPct")]
+    public double GpuFanPct { get; set; }
         = 0;
 }
 

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -50,13 +51,15 @@ public class MainViewModel : ViewModelBase
     private bool _isCustomTag;
     private string? _stopStatus;
 
-    private string _liveCpuTemp = "-";
-    private string _liveGpuTemp = "-";
-    private string _liveCpuFreq = "-";
-    private string _liveGpuCore = "-";
-    private string _liveGpuMem = "-";
-    private string _liveCpuFan = "-";
-    private string _liveGpuFan = "-";
+    private string? _liveCpuTemp;
+    private string? _liveGpuTemp;
+    private string? _liveCpuFreq;
+    private string? _liveGpuCore;
+    private string? _liveGpuMem;
+    private string? _liveCpuFan;
+    private string? _liveGpuFan;
+    private string? _liveGpuFanPct;
+    private bool _fanSummaryLogged;
 
     public MainViewModel()
     {
@@ -134,46 +137,52 @@ public class MainViewModel : ViewModelBase
         set => SetField(ref _isCustomTag, value);
     }
 
-    public string LiveCpuTemp
+    public string? LiveCpuTemp
     {
         get => _liveCpuTemp;
         set => SetField(ref _liveCpuTemp, value);
     }
 
-    public string LiveGpuTemp
+    public string? LiveGpuTemp
     {
         get => _liveGpuTemp;
         set => SetField(ref _liveGpuTemp, value);
     }
 
-    public string LiveCpuFreq
+    public string? LiveCpuFreq
     {
         get => _liveCpuFreq;
         set => SetField(ref _liveCpuFreq, value);
     }
 
-    public string LiveGpuCore
+    public string? LiveGpuCore
     {
         get => _liveGpuCore;
         set => SetField(ref _liveGpuCore, value);
     }
 
-    public string LiveGpuMem
+    public string? LiveGpuMem
     {
         get => _liveGpuMem;
         set => SetField(ref _liveGpuMem, value);
     }
 
-    public string LiveCpuFan
+    public string? LiveCpuFan
     {
         get => _liveCpuFan;
         set => SetField(ref _liveCpuFan, value);
     }
 
-    public string LiveGpuFan
+    public string? LiveGpuFan
     {
         get => _liveGpuFan;
         set => SetField(ref _liveGpuFan, value);
+    }
+
+    public string? LiveGpuFanPct
+    {
+        get => _liveGpuFanPct;
+        set => SetField(ref _liveGpuFanPct, value);
     }
 
     public void AttachHotkey(Window window) => _hotkeyService.Register(window);
@@ -201,6 +210,7 @@ public class MainViewModel : ViewModelBase
             _stopStatus = null;
             _isStopping = false;
             _samples.Clear();
+            _fanSummaryLogged = false;
             StatusMessage = "Запуск тестов...";
             AppendLog("Начало прогона");
 
@@ -232,6 +242,7 @@ public class MainViewModel : ViewModelBase
                     Timeline = new List<RunJsonTelemetrySample>(),
                     Peaks = new RunJsonPeaks()
                 },
+                Notes = new List<string>(),
                 Brand = new RunJsonBrand
                 {
                     CompanyName = _config.Branding.CompanyName,
@@ -365,7 +376,18 @@ public class MainViewModel : ViewModelBase
                 AppendLog("Запуск FurMark");
                 try
                 {
-                    _furmark.Start(Plan);
+                    var format = await _furmark.StartAsync(Plan);
+                    var argsLog = _furmark.LastArgumentLog;
+                    if (!string.IsNullOrEmpty(argsLog) && _currentRun != null)
+                    {
+                        if (!_currentRun.Notes.Contains(argsLog))
+                        {
+                            _currentRun.Notes.Add(argsLog);
+                        }
+                    }
+                    AppendLog(format == 1
+                        ? "FurMark запущен с аргументами legacy"
+                        : "FurMark запущен с аргументами modern");
                     await WaitWithCancellation(TimeSpan.FromMinutes(Math.Max(1, Plan.FurmarkMinutes)), token);
                 }
                 finally
@@ -433,6 +455,12 @@ public class MainViewModel : ViewModelBase
         if (_currentRun == null || _device == null || _runFolder == null)
         {
             return;
+        }
+
+        if (!_fanSummaryLogged)
+        {
+            _currentRun.Notes.Add("Fans: CPU —, GPU RPM —, GPU % —");
+            _fanSummaryLogged = true;
         }
 
         _currentRun.Session.Status = status;
@@ -503,10 +531,11 @@ public class MainViewModel : ViewModelBase
         LiveGpuMem = FormatValue(sample.GpuMemMHz, "F0");
         LiveCpuFan = FormatValue(sample.CpuFanRpm, "F0");
         LiveGpuFan = FormatValue(sample.GpuFanRpm, "F0");
+        LiveGpuFanPct = FormatValue(sample.GpuFanPct, "F0");
     }
 
-    private static string FormatValue(double? value, string format)
-        => value.HasValue ? value.Value.ToString(format) : "-";
+    private static string? FormatValue(double? value, string format)
+        => value.HasValue ? value.Value.ToString(format, CultureInfo.InvariantCulture) : null;
 
     private void TryAutoStopOnLimits(HwSample sample)
     {
@@ -533,6 +562,13 @@ public class MainViewModel : ViewModelBase
 
         lock (_lock)
         {
+            if (!_fanSummaryLogged && _currentRun != null)
+            {
+                var fanLine = $"Fans: CPU {(sample.CpuFanRpm.HasValue ? "✓" : "—")}, GPU RPM {(sample.GpuFanRpm.HasValue ? "✓" : "—")}, GPU % {(sample.GpuFanPct.HasValue ? "✓" : "—")}";
+                _currentRun.Notes.Add(fanLine);
+                _fanSummaryLogged = true;
+            }
+
             var start = _currentRun.Session.StartedAt;
             var elapsed = (sample.Ts.ToUniversalTime() - start).TotalSeconds;
             _samples.Add(new RunJsonTelemetrySample
@@ -544,7 +580,8 @@ public class MainViewModel : ViewModelBase
                 GpuRpm = sample.GpuFanRpm ?? 0,
                 CpuMHz = sample.CpuMHz ?? 0,
                 GpuCore = sample.GpuCoreMHz ?? 0,
-                GpuMem = sample.GpuMemMHz ?? 0
+                GpuMem = sample.GpuMemMHz ?? 0,
+                GpuFanPct = sample.GpuFanPct ?? 0
             });
         }
     }

@@ -51,6 +51,13 @@ public class ReportGenerator
         File.WriteAllText(htmlPath, html, Encoding.UTF8);
 
         var logBuilder = new StringBuilder();
+        if (run.Notes != null)
+        {
+            foreach (var note in run.Notes)
+            {
+                logBuilder.AppendLine(note);
+            }
+        }
         foreach (var sample in run.Telemetry.Timeline)
         {
             logBuilder.AppendLine($"{run.Session.StartedAt.AddSeconds(sample.T):yyyy-MM-dd HH:mm:ss};RUN;{sample.CpuT};{sample.GpuT};{sample.CpuRpm};{sample.GpuRpm};{sample.CpuMHz};{sample.GpuCore};{sample.GpuMem};{run.Session.Tag};{run.Session.Status}");
