@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <title>ServiceBench run report</title>
+    <link rel="stylesheet" href="../assets/styles.css" />
+    <script src="../assets/chart.min.js"></script>
+</head>
+<body>
+    <header>
+        <div class="brand-info">
+            <h1>ServiceBench — отчёт</h1>
+            <p>{{companyName}}</p>
+            <p>{{address}}</p>
+            <p>{{workingHours}}</p>
+        </div>
+        {{logo}}
+    </header>
+    <main>
+        <section>
+            <h2>Устройство</h2>
+            <p>{{device}}</p>
+            <p>Тег: {{tag}}</p>
+            <p>Статус: {{status}}</p>
+            <p>Начало: {{started}}</p>
+            <p>Окончание: {{ended}}</p>
+            <p>Длительность: {{duration}}</p>
+        </section>
+        <section>
+            <h2>Ключевые показатели</h2>
+            <div class="cards">
+                <div class="card"><h3>Макс. CPU °C</h3><p>{{cpuTempMax}}</p></div>
+                <div class="card"><h3>Макс. GPU °C</h3><p>{{gpuTempMax}}</p></div>
+                <div class="card"><h3>Макс. CPU Fan RPM</h3><p>{{cpuFanMax}}</p></div>
+                <div class="card"><h3>Макс. GPU Fan RPM</h3><p>{{gpuFanMax}}</p></div>
+                <div class="card"><h3>Макс. GPU Fan %</h3><p>{{gpuFanPctMax}}</p></div>
+                <div class="card"><h3>CPU MHz (avg)</h3><p>{{cpuFreqAvg}}</p></div>
+                <div class="card"><h3>GPU Core MHz (avg)</h3><p>{{gpuCoreAvg}}</p></div>
+                <div class="card"><h3>GPU Mem MHz (avg)</h3><p>{{gpuMemAvg}}</p></div>
+            </div>
+        </section>
+        <section>
+            <h2>Графики</h2>
+            <canvas id="chartTemp"></canvas>
+            <canvas id="chartFreq"></canvas>
+            <canvas id="chartFan"></canvas>
+        </section>
+        <section>
+            <h2>Скриншоты</h2>
+            <div class="gallery" id="screens"></div>
+        </section>
+        <section>
+            <h2>Заметки</h2>
+            {{notes}}
+        </section>
+    </main>
+    <script>
+        async function loadData() {
+            const response = await fetch('run.json');
+            const data = await response.json();
+            const timeline = data.telemetry.timeline;
+            const length = timeline.length;
+            const labels = timeline.map(x => x.t);
+            const cpuT = timeline.map(x => x.cpuT ?? null);
+            const gpuT = timeline.map(x => x.gpuT ?? null);
+            const cpuFreq = timeline.map(x => x.cpuMHz ?? null);
+            const gpuCore = timeline.map(x => x.gpuCore ?? null);
+            const gpuMem = timeline.map(x => x.gpuMem ?? null);
+            const cpuFan = timeline.map(x => x.cpuRpm ?? null);
+            const gpuFan = timeline.map(x => x.gpuRpm ?? null);
+            const gpuFanPct = timeline.map(x => x.gpuFanPct ?? null);
+
+            const cpuCores = {};
+            const gpuTempsExtra = {};
+            const gpuClocksExtra = {};
+            const ramTemps = {};
+            const ramClocks = {};
+
+            timeline.forEach((sample, index) => {
+                const cpuCoreValues = sample.cpuCoresMHz || {};
+                Object.entries(cpuCoreValues).forEach(([key, value]) => {
+                    if (!cpuCores[key]) {
+                        cpuCores[key] = new Array(length).fill(null);
+                    }
+                    cpuCores[key][index] = value ?? null;
+                });
+
+                const gpuTempValues = sample.gpuTemps || {};
+                Object.entries(gpuTempValues).forEach(([key, value]) => {
+                    if (!gpuTempsExtra[key]) {
+                        gpuTempsExtra[key] = new Array(length).fill(null);
+                    }
+                    gpuTempsExtra[key][index] = value ?? null;
+                });
+
+                const gpuClockValues = sample.gpuClocks || {};
+                Object.entries(gpuClockValues).forEach(([key, value]) => {
+                    if (!gpuClocksExtra[key]) {
+                        gpuClocksExtra[key] = new Array(length).fill(null);
+                    }
+                    gpuClocksExtra[key][index] = value ?? null;
+                });
+
+                const ramTempValues = sample.ramTemps || {};
+                Object.entries(ramTempValues).forEach(([key, value]) => {
+                    if (!ramTemps[key]) {
+                        ramTemps[key] = new Array(length).fill(null);
+                    }
+                    ramTemps[key][index] = value ?? null;
+                });
+
+                const ramClockValues = sample.ramClocks || {};
+                Object.entries(ramClockValues).forEach(([key, value]) => {
+                    if (!ramClocks[key]) {
+                        ramClocks[key] = new Array(length).fill(null);
+                    }
+                    ramClocks[key][index] = value ?? null;
+                });
+            });
+
+            const ctxTemp = document.getElementById('chartTemp');
+            const tempDatasets = [
+                { label: 'CPU °C', data: cpuT, borderColor: '#e84118', fill: false },
+                { label: 'GPU °C', data: gpuT, borderColor: '#0097e6', fill: false }
+            ];
+            Object.entries(gpuTempsExtra).forEach(([key, values]) => {
+                if (key.toLowerCase().includes('cpu')) {
+                    return;
+                }
+                const hasValue = values.some(v => v !== null);
+                if (hasValue) {
+                    tempDatasets.push({
+                        label: key,
+                        data: values,
+                        borderColor: '#8c7ae6',
+                        fill: false
+                    });
+                }
+            });
+            Object.entries(ramTemps).forEach(([key, values]) => {
+                const hasValue = values.some(v => v !== null);
+                if (hasValue) {
+                    tempDatasets.push({
+                        label: key,
+                        data: values,
+                        borderColor: '#1dd1a1',
+                        fill: false
+                    });
+                }
+            });
+            new Chart(ctxTemp, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: tempDatasets
+                }
+            });
+
+            const ctxFreq = document.getElementById('chartFreq');
+            const freqDatasets = [
+                { label: 'CPU MHz', data: cpuFreq, borderColor: '#44bd32', fill: false },
+                { label: 'GPU Core MHz', data: gpuCore, borderColor: '#8c7ae6', fill: false },
+                { label: 'GPU Mem MHz', data: gpuMem, borderColor: '#487eb0', fill: false }
+            ];
+            const coreColors = ['#c23616', '#192a56', '#273c75', '#e1b12c', '#009432', '#cd6133', '#0984e3', '#d63031'];
+            Object.entries(cpuCores).slice(0, 16).forEach(([key, values], index) => {
+                const hasValue = values.some(v => v !== null);
+                if (hasValue) {
+                    freqDatasets.push({
+                        label: key,
+                        data: values,
+                        borderColor: coreColors[index % coreColors.length],
+                        fill: false
+                    });
+                }
+            });
+            Object.entries(gpuClocksExtra).forEach(([key, values]) => {
+                const hasValue = values.some(v => v !== null);
+                if (hasValue) {
+                    freqDatasets.push({
+                        label: key,
+                        data: values,
+                        borderColor: '#6c5ce7',
+                        fill: false
+                    });
+                }
+            });
+            Object.entries(ramClocks).forEach(([key, values]) => {
+                const hasValue = values.some(v => v !== null);
+                if (hasValue) {
+                    freqDatasets.push({
+                        label: key,
+                        data: values,
+                        borderColor: '#1e90ff',
+                        fill: false
+                    });
+                }
+            });
+            new Chart(ctxFreq, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: freqDatasets
+                }
+            });
+
+            const ctxFan = document.getElementById('chartFan');
+            const fanDatasets = [];
+            if (cpuFan.some(x => x != null && x > 0)) {
+                fanDatasets.push({ label: 'CPU Fan RPM', data: cpuFan, borderColor: '#fbc531', fill: false, yAxisID: 'rpm' });
+            }
+            if (gpuFan.some(x => x != null && x > 0)) {
+                fanDatasets.push({ label: 'GPU Fan RPM', data: gpuFan, borderColor: '#273c75', fill: false, yAxisID: 'rpm' });
+            }
+            if (gpuFanPct.some(x => x != null && x > 0)) {
+                fanDatasets.push({ label: 'GPU Fan %', data: gpuFanPct, borderColor: '#e1b12c', fill: false, yAxisID: 'pct' });
+            }
+            new Chart(ctxFan, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: fanDatasets
+                },
+                options: {
+                    scales: {
+                        rpm: {
+                            type: 'linear',
+                            position: 'left',
+                            beginAtZero: true
+                        },
+                        pct: {
+                            type: 'linear',
+                            position: 'right',
+                            beginAtZero: true,
+                            ticks: {
+                                callback: value => `${value}%`
+                            }
+                        }
+                    }
+                }
+            });
+
+            const container = document.getElementById('screens');
+            data.screens.forEach(screen => {
+                const img = document.createElement('img');
+                img.src = screen.file;
+                img.alt = `Screenshot ${screen.t}`;
+                container.appendChild(img);
+            });
+        }
+        loadData();
+    </script>
+</body>
+</html>

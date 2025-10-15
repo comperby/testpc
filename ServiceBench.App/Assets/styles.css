@@ -1,0 +1,102 @@
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #f5f6fa;
+    color: #2f3640;
+    margin: 0;
+    padding: 0;
+}
+
+header {
+    background: #273c75;
+    color: white;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+header .brand-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.logo {
+    max-height: 60px;
+    margin-right: 20px;
+}
+
+main {
+    padding: 20px;
+}
+
+section {
+    margin-bottom: 30px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    padding: 20px;
+}
+
+.cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 10px;
+}
+
+.card {
+    background: #f0f4ff;
+    padding: 15px;
+    border-radius: 6px;
+}
+
+.card h3 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    color: #718093;
+}
+
+.card p {
+    font-size: 20px;
+    margin: 0;
+}
+
+.run-list {
+    list-style: none;
+    padding: 0;
+}
+
+.run-list li {
+    margin-bottom: 8px;
+}
+
+.gallery {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.gallery img {
+    width: 100%;
+    border-radius: 6px;
+}
+
+.notes {
+    list-style: disc;
+    padding-left: 20px;
+}
+
+.comparison {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.comparison th,
+.comparison td {
+    border: 1px solid #dcdde1;
+    padding: 8px 12px;
+    text-align: left;
+}
+
+.comparison th {
+    background: #f0f4ff;
+}
