@@ -1,62 +1,129 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using ServiceBench.App.Models;
 
 namespace ServiceBench.App.Services;
 
-public class FurMarkController
+public sealed class FurMarkController
 {
-    private readonly Config _config;
-    private readonly ProcessRunner _processRunner;
-    private Process? _process;
-    private string? _lastArgsLog;
+    private const int OutputLinesLimit = 200;
 
-    public FurMarkController(Config config, ProcessRunner processRunner)
+    private static readonly Dictionary<string, string> PresetFlags = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["1280x720"] = "--p720",
+        ["1920x1080"] = "--p1080",
+        ["2560x1440"] = "--p1440",
+        ["3840x2160"] = "--p2160"
+    };
+
+    private readonly Config _config;
+    private readonly ProcessRunner _runner;
+
+    private ProcessStartResult? _startResult;
+    private Process? _process;
+    private CancellationTokenSource? _watchdogCts;
+    private bool? _supportsMaxTime;
+
+    private string? _switchLog;
+    private string? _argsLog;
+    private string? _stopLog;
+
+    public FurMarkController(Config config, ProcessRunner runner)
     {
         _config = config;
-        _processRunner = processRunner;
+        _runner = runner;
     }
 
-    public string? LastArgumentLog => _lastArgsLog;
+    public string? SwitchLog => _switchLog;
+    public string? LastArgumentLog => _argsLog;
+    public string? LastStopLog => _stopLog;
 
-    public async Task<int> StartAsync(TestPlan plan)
+    public string? GetOutputSnippet(int maxLines = OutputLinesLimit)
     {
-        if (!File.Exists(_config.FurmarkPath))
+        if (_startResult == null)
         {
-            throw new FileNotFoundException($"Не найден FurMark по пути {_config.FurmarkPath}. RootBase: {_config.RootBase}");
+            return null;
         }
 
-        _lastArgsLog = null;
+        var text = _startResult.GetOutputSnapshot();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        var lines = text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+        if (lines.Length <= maxLines)
+        {
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        return string.Join(Environment.NewLine, lines.Take(maxLines));
+    }
+
+    public async Task StartAsync(TestPlan plan)
+    {
+        var exe = ResolveExecutable();
         var resolution = ResolveResolution(plan);
-        var duration = Math.Max(1, plan.FurmarkMinutes) * 60;
+        var seconds = Math.Max(1, plan.FurmarkMinutes) * 60;
+        var presetFlag = ResolvePreset(plan, resolution);
 
-        var outcome = await TryStartFurmarkAsync(
-            _config.FurmarkPath,
-            resolution,
-            duration,
-            plan.FurmarkFullscreen);
+        _switchLog = _config.FurmarkSwitchedToGui
+            ? "furmark: switching to FurMark_GUI.exe (CLI detected via .bat)"
+            : null;
+        _stopLog = null;
 
-        if (outcome.Format == 0 || outcome.Process == null)
+        var supportsMaxTime = await SupportsMaxTimeAsync(exe);
+        var arguments = BuildArguments(presetFlag, resolution, seconds, plan.FurmarkCustom, plan.FurmarkFullscreen, supportsMaxTime);
+
+        _startResult = await _runner.StartAsync(
+            exe,
+            arguments,
+            Path.GetDirectoryName(exe),
+            hidden: false,
+            captureOutput: true,
+            timeoutStartMs: 8000);
+
+        _process = _startResult.Process;
+        if (_process == null || !_startResult.Started)
         {
-            var details = string.IsNullOrWhiteSpace(outcome.Output)
-                ? string.Empty
-                : $"{Environment.NewLine}{outcome.Output.Trim()}";
-            throw new InvalidOperationException(
-                $"FurMark не принял аргументы. Путь: {_config.FurmarkPath}{details}");
+            var failure = _startResult.GetOutputSnapshot();
+            throw new InvalidOperationException($"FurMark не принял аргументы. Путь: {exe}{Environment.NewLine}{failure}");
         }
 
-        _process = outcome.Process;
-        _lastArgsLog = outcome.Format switch
-        {
-            1 => $"furmark args: legacy({outcome.Args})",
-            2 => $"furmark args: modern({outcome.Args})",
-            _ => null
-        };
+        _argsLog = $"furmark args: gui {arguments} [max-time: {(supportsMaxTime ? "yes" : "no")}]";
 
-        return outcome.Format;
+        if (!supportsMaxTime)
+        {
+            _watchdogCts = new CancellationTokenSource();
+            _ = WatchdogAsync(_process, seconds, _watchdogCts.Token);
+        }
+    }
+
+    public async Task StopAsync()
+    {
+        _watchdogCts?.Cancel();
+        _watchdogCts = null;
+
+        if (_process != null)
+        {
+            await _runner.TryCloseGracefully(_process);
+            _process = null;
+        }
+    }
+
+    private string ResolveExecutable()
+    {
+        if (File.Exists(_config.FurmarkPath))
+        {
+            return _config.FurmarkPath;
+        }
+
+        throw new FileNotFoundException($"Не найден FurMark по пути {_config.FurmarkPath}. RootBase: {_config.RootBase}");
     }
 
     private static Resolution ResolveResolution(TestPlan plan)
@@ -67,79 +134,149 @@ public class FurMarkController
         }
 
         var preset = plan.SelectedFurmarkPreset ?? "1920x1080";
-        var parts = preset.Split('x');
-        if (parts.Length == 2 && int.TryParse(parts[0], out var w) && int.TryParse(parts[1], out var h))
+        if (TryParseResolution(preset, out var parsed))
         {
-            return new Resolution(Math.Max(1, w), Math.Max(1, h));
+            return parsed;
         }
 
         return new Resolution(1920, 1080);
     }
 
-    private async Task<FurmarkLaunchResult> TryStartFurmarkAsync(string exe, Resolution resolution, int seconds, bool fullscreen)
+    private static bool TryParseResolution(string input, out Resolution resolution)
     {
-        var workingDirectory = Path.GetDirectoryName(exe) ?? Environment.CurrentDirectory;
-
-        string BuildLegacyArgs()
-            => $"/width={resolution.Width} /height={resolution.Height} /time={seconds}" +
-               (fullscreen ? " /fullscreen" : string.Empty);
-
-        string BuildModernArgs()
-            => $"--width {resolution.Width} --height {resolution.Height} --duration {seconds}" +
-               (fullscreen ? " --fullscreen" : string.Empty);
-
-        var legacyArgs = BuildLegacyArgs();
-        var legacy = await _processRunner.StartAsync(
-            exe,
-            legacyArgs,
-            workingDirectory,
-            hidden: false,
-            captureOutput: true,
-            timeoutStartMs: 8000);
-
-        if (legacy.Process != null && legacy.Started && !ContainsUnusedParameter(legacy.Output))
+        resolution = default;
+        var parts = input.Split('x', 'X');
+        if (parts.Length != 2)
         {
-            return new FurmarkLaunchResult(1, legacyArgs, legacy.Process, legacy.Output);
+            return false;
         }
 
-        await _processRunner.TryStopAsync(legacy);
-
-        var modernArgs = BuildModernArgs();
-        var modern = await _processRunner.StartAsync(
-            exe,
-            modernArgs,
-            workingDirectory,
-            hidden: false,
-            captureOutput: true,
-            timeoutStartMs: 8000);
-
-        if (modern.Process != null && modern.Started)
+        if (int.TryParse(parts[0], out var w) && int.TryParse(parts[1], out var h) && w > 0 && h > 0)
         {
-            return new FurmarkLaunchResult(2, modernArgs, modern.Process, modern.Output);
+            resolution = new Resolution(w, h);
+            return true;
         }
 
-        await _processRunner.TryStopAsync(modern);
-
-        var combinedOutput = string.Join(
-            Environment.NewLine,
-            new[] { legacy.Output, modern.Output }.Where(o => !string.IsNullOrWhiteSpace(o)));
-
-        return new FurmarkLaunchResult(0, modernArgs, null, combinedOutput);
+        return false;
     }
 
-    public async Task StopAsync()
+    private static string? ResolvePreset(TestPlan plan, Resolution resolution)
     {
-        if (_process != null)
+        if (plan.FurmarkCustom)
         {
-            await _processRunner.TryCloseGracefully(_process);
-            _process = null;
+            return null;
+        }
+
+        if (plan.SelectedFurmarkPreset is string preset && PresetFlags.TryGetValue(preset, out var flag))
+        {
+            return flag;
+        }
+
+        if (PresetFlags.TryGetValue($"{resolution.Width}x{resolution.Height}", out var flagFromResolution))
+        {
+            return flagFromResolution;
+        }
+
+        return null;
+    }
+
+    private async Task<bool> SupportsMaxTimeAsync(string exe)
+    {
+        if (_supportsMaxTime.HasValue)
+        {
+            return _supportsMaxTime.Value;
+        }
+
+        try
+        {
+            var help = await _runner.RunForOutputAsync(exe, "--help", Path.GetDirectoryName(exe), 8000);
+            _supportsMaxTime = help.Output.IndexOf("--max-time", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+        catch
+        {
+            _supportsMaxTime = false;
+        }
+
+        return _supportsMaxTime.Value;
+    }
+
+    private static string BuildArguments(
+        string? presetFlag,
+        Resolution resolution,
+        int seconds,
+        bool isCustom,
+        bool fullscreen,
+        bool supportsMaxTime)
+    {
+        var parts = new List<string>
+        {
+            "--demo furmark-gl",
+            "--benchmark"
+        };
+
+        if (!string.IsNullOrEmpty(presetFlag) && !isCustom)
+        {
+            parts.Add(presetFlag);
+        }
+        else
+        {
+            parts.Add($"--width {resolution.Width}");
+            parts.Add($"--height {resolution.Height}");
+        }
+
+        if (supportsMaxTime)
+        {
+            parts.Add($"--max-time {seconds}");
+        }
+
+        if (fullscreen)
+        {
+            parts.Add("--fullscreen");
+        }
+
+        parts.Add("--no-score-box");
+        return string.Join(' ', parts);
+    }
+
+    private async Task WatchdogAsync(Process process, int seconds, CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(seconds), token);
+            if (token.IsCancellationRequested || process.HasExited)
+            {
+                return;
+            }
+
+            _stopLog = $"furmark stop: watchdog after {seconds} sec";
+
+            try
+            {
+                process.CloseMainWindow();
+            }
+            catch
+            {
+                // ignore
+            }
+
+            var exited = await Task.Run(() => process.WaitForExit(3000), token);
+            if (!exited)
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            // ignored
         }
     }
 
-    private static bool ContainsUnusedParameter(string output)
-        => output.Contains("unused parameter", StringComparison.OrdinalIgnoreCase);
-
-    private sealed record Resolution(int Width, int Height);
-
-    private sealed record FurmarkLaunchResult(int Format, string Args, Process? Process, string Output);
+    private readonly record struct Resolution(int Width, int Height);
 }

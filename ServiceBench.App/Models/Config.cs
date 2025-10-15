@@ -45,7 +45,24 @@ public class Config
         Branding = settings.Brand;
         AidaPath = ResolveToolPath(settings.AidaPath, Path.Combine(RootBase, "Test", "AIDA64", "aida64.exe"));
         OcctPath = ResolveToolPath(settings.OcctPath, Path.Combine(RootBase, "Test", "OCCT.exe"));
-        FurmarkPath = ResolveToolPath(settings.FurmarkPath, Path.Combine(RootBase, "Test", "FurMark", "FurMark.exe"));
+        var defaultFurmark = Path.Combine(RootBase, "Test", "FurMark", "FurMark_GUI.exe");
+        var resolvedFurmark = ResolveToolPath(settings.FurmarkPath, defaultFurmark);
+        FurmarkSwitchedToGui = false;
+        FurmarkOriginalCliPath = null;
+
+        if (resolvedFurmark.EndsWith("FurMark.exe", StringComparison.OrdinalIgnoreCase))
+        {
+            var dir = Path.GetDirectoryName(resolvedFurmark) ?? RootBase;
+            var guiCandidate = Path.Combine(dir, "FurMark_GUI.exe");
+            if (File.Exists(guiCandidate))
+            {
+                FurmarkOriginalCliPath = resolvedFurmark;
+                resolvedFurmark = guiCandidate;
+                FurmarkSwitchedToGui = true;
+            }
+        }
+
+        FurmarkPath = resolvedFurmark;
     }
 
     private static string ResolveToolPath(string? overridePath, string defaultPath)
@@ -57,6 +74,10 @@ public class Config
 
         return defaultPath;
     }
+
+    public bool FurmarkSwitchedToGui { get; private set; }
+
+    public string? FurmarkOriginalCliPath { get; private set; }
 
     public string ToJson() => JsonSerializer.Serialize(CurrentSettings, new JsonSerializerOptions
     {

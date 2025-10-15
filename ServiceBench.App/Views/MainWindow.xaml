@@ -11,6 +11,10 @@
         <vm:MainViewModel />
     </Window.DataContext>
 
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+    </Window.Resources>
+
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -173,7 +177,7 @@
                 </StackPanel>
             </ScrollViewer>
 
-            <Grid Grid.Column="1" MinWidth="420">
+            <Grid Grid.Column="1" MinWidth="460">
                 <Border Padding="12"
                         BorderBrush="#DDD"
                         BorderThickness="1"
@@ -191,79 +195,94 @@
                             <Button Content="Настройки" Command="{Binding OpenSettingsCommand}"/>
                         </StackPanel>
 
-                        <Separator Margin="0,0,0,8"/>
-
                         <StackPanel DockPanel.Dock="Top">
                             <TextBlock Text="Текущий статус:" FontWeight="SemiBold"/>
                             <ScrollViewer Margin="0,4,0,0"
                                           MaxHeight="160"
                                           VerticalScrollBarVisibility="Auto"
                                           HorizontalScrollBarVisibility="Disabled">
-                                <TextBlock Text="{Binding Status, TargetNullValue=-}"
-                                           TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding Status}"
+                                           TextWrapping="Wrap"
+                                           TextTrimming="CharacterEllipsis"/>
                             </ScrollViewer>
                         </StackPanel>
 
-                        <Separator Margin="0,8,0,8"/>
+                        <Separator DockPanel.Dock="Top" Margin="0,8,0,8"/>
 
-                        <StackPanel DockPanel.Dock="Top">
-                            <TextBlock Text="Телеметрия (live)" FontWeight="SemiBold" Margin="0,8,0,4"/>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="160"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-
-                                <TextBlock Grid.Row="0" Grid.Column="0" Text="CPU °C:"/>
-                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding LiveCpuTemp, TargetNullValue=-}" HorizontalAlignment="Right" TextTrimming="CharacterEllipsis"/>
-
-                                <TextBlock Grid.Row="1" Grid.Column="0" Text="GPU °C:"/>
-                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding LiveGpuTemp, TargetNullValue=-}" HorizontalAlignment="Right" TextTrimming="CharacterEllipsis"/>
-
-                                <TextBlock Grid.Row="2" Grid.Column="0" Text="CPU MHz:"/>
-                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding LiveCpuFreq, TargetNullValue=-}" HorizontalAlignment="Right" TextTrimming="CharacterEllipsis"/>
-
-                                <TextBlock Grid.Row="3" Grid.Column="0" Text="GPU Core MHz:"/>
-                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding LiveGpuCore, TargetNullValue=-}" HorizontalAlignment="Right" TextTrimming="CharacterEllipsis"/>
-
-                                <TextBlock Grid.Row="4" Grid.Column="0" Text="GPU Mem MHz:"/>
-                                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding LiveGpuMem, TargetNullValue=-}" HorizontalAlignment="Right" TextTrimming="CharacterEllipsis"/>
-
-                                <TextBlock Grid.Row="5" Grid.Column="0" Text="CPU Fan RPM:"/>
-                                <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding LiveCpuFan, TargetNullValue=-}" HorizontalAlignment="Right" TextTrimming="CharacterEllipsis"/>
-
-                                <TextBlock Grid.Row="6" Grid.Column="0" Text="GPU Fan:"/>
-                                <TextBlock Grid.Row="6" Grid.Column="1" HorizontalAlignment="Right" TextTrimming="CharacterEllipsis">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Text">
-                                                <Setter.Value>
-                                                    <Binding Path="LiveGpuFan" TargetNullValue="-"/>
-                                                </Setter.Value>
-                                            </Setter>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding LiveGpuFan}" Value="{x:Null}">
-                                                    <Setter Property="Text">
-                                                        <Setter.Value>
-                                                            <Binding Path="LiveGpuFanPct" StringFormat="{}{0}%" TargetNullValue="-"/>
-                                                        </Setter.Value>
-                                                    </Setter>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                            </Grid>
-                        </StackPanel>
+                        <TabControl>
+                            <TabItem Header="Базовые">
+                                <ItemsControl ItemsSource="{Binding BasicMetrics}" Margin="0,8,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,2,0,2">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="180"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="60"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Label}" TextWrapping="Wrap"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding DisplayValue}" HorizontalAlignment="Right" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding Unit}" HorizontalAlignment="Right"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </TabItem>
+                            <TabItem Header="CPU" Visibility="{Binding ShowCpuTab, Converter={StaticResource BoolToVisibility}}">
+                                <ItemsControl ItemsSource="{Binding CpuMetrics}" Margin="0,8,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,2,0,2">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="220"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="60"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Label}" TextWrapping="Wrap"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding DisplayValue}" HorizontalAlignment="Right" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding Unit}" HorizontalAlignment="Right"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </TabItem>
+                            <TabItem Header="GPU" Visibility="{Binding ShowGpuTab, Converter={StaticResource BoolToVisibility}}">
+                                <ItemsControl ItemsSource="{Binding GpuMetrics}" Margin="0,8,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,2,0,2">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="220"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="60"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Label}" TextWrapping="Wrap"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding DisplayValue}" HorizontalAlignment="Right" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding Unit}" HorizontalAlignment="Right"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </TabItem>
+                            <TabItem Header="RAM" Visibility="{Binding ShowRamTab, Converter={StaticResource BoolToVisibility}}">
+                                <ItemsControl ItemsSource="{Binding RamMetrics}" Margin="0,8,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,2,0,2">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="220"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="60"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Label}" TextWrapping="Wrap"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding DisplayValue}" HorizontalAlignment="Right" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding Unit}" HorizontalAlignment="Right"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </TabItem>
+                        </TabControl>
                     </DockPanel>
                 </Border>
             </Grid>

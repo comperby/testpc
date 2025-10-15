@@ -88,13 +88,14 @@ public class ProcessRunner
         };
 
         var outputBuilder = new StringBuilder();
+        var outputLock = new object();
         if (captureOutput)
         {
             process.OutputDataReceived += (_, e) =>
             {
                 if (!string.IsNullOrEmpty(e.Data))
                 {
-                    lock (outputBuilder)
+                    lock (outputLock)
                     {
                         outputBuilder.AppendLine(e.Data);
                     }
@@ -104,7 +105,7 @@ public class ProcessRunner
             {
                 if (!string.IsNullOrEmpty(e.Data))
                 {
-                    lock (outputBuilder)
+                    lock (outputLock)
                     {
                         outputBuilder.AppendLine(e.Data);
                     }
@@ -126,8 +127,7 @@ public class ProcessRunner
         await Task.Delay(Math.Max(200, timeoutStartMs));
 
         var started = !process.HasExited;
-        var output = captureOutput ? outputBuilder.ToString() : string.Empty;
-        return new ProcessStartResult(process, started, output);
+        return new ProcessStartResult(process, started, captureOutput ? outputBuilder : null, outputLock);
     }
 
     public async Task TryStopAsync(ProcessStartResult? result)
@@ -139,20 +139,83 @@ public class ProcessRunner
 
         await TryCloseGracefully(result.Process);
     }
+
+    public async Task<ProcessExecutionResult> RunForOutputAsync(
+        string exe,
+        string args,
+        string? workingDirectory = null,
+        int timeoutMs = 10000)
+    {
+        var start = await StartAsync(
+            exe,
+            args,
+            workingDirectory,
+            hidden: true,
+            captureOutput: true,
+            timeoutStartMs: Math.Min(timeoutMs, 2000));
+
+        if (start.Process == null)
+        {
+            return new ProcessExecutionResult(null, start.Started, start.GetOutputSnapshot());
+        }
+
+        var process = start.Process;
+        var exited = await Task.Run(() => process.WaitForExit(timeoutMs));
+        if (!exited)
+        {
+            await TryCloseGracefully(process);
+        }
+
+        await Task.Delay(100);
+        var output = start.GetOutputSnapshot();
+        process.Dispose();
+        return new ProcessExecutionResult(null, exited, output);
+    }
 }
 
 public sealed class ProcessStartResult
 {
-    public ProcessStartResult(Process? process, bool started, string output)
+    private readonly StringBuilder? _buffer;
+    private readonly object? _bufferLock;
+
+    internal ProcessStartResult(Process? process, bool started, StringBuilder? buffer, object? bufferLock)
     {
         Process = process;
         Started = started;
-        Output = output;
+        _buffer = buffer;
+        _bufferLock = bufferLock;
     }
 
     public Process? Process { get; }
 
     public bool Started { get; }
+
+    public string GetOutputSnapshot()
+    {
+        if (_buffer == null || _bufferLock == null)
+        {
+            return string.Empty;
+        }
+
+        lock (_bufferLock)
+        {
+            return _buffer.ToString();
+        }
+    }
+}
+
+public sealed class ProcessExecutionResult
+{
+    public ProcessExecutionResult(Process? process, bool exited, string output)
+    {
+        Process = process;
+        Exited = exited;
+        Output = output;
+    }
+
+    public Process? Process { get; }
+
+    public bool Exited { get; }
 
     public string Output { get; }
 }

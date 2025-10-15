@@ -60,6 +60,13 @@ public class MainViewModel : ViewModelBase
     private string? _liveGpuFan;
     private string? _liveGpuFanPct;
     private bool _fanSummaryLogged;
+    private readonly ObservableCollection<MetricRow> _basicMetrics = new();
+    private readonly ObservableCollection<MetricRow> _cpuMetrics = new();
+    private readonly ObservableCollection<MetricRow> _gpuMetrics = new();
+    private readonly ObservableCollection<MetricRow> _ramMetrics = new();
+    private bool _showCpuTab;
+    private bool _showGpuTab;
+    private bool _showRamTab;
 
     public MainViewModel()
     {
@@ -183,6 +190,32 @@ public class MainViewModel : ViewModelBase
     {
         get => _liveGpuFanPct;
         set => SetField(ref _liveGpuFanPct, value);
+    }
+
+    public ObservableCollection<MetricRow> BasicMetrics => _basicMetrics;
+
+    public ObservableCollection<MetricRow> CpuMetrics => _cpuMetrics;
+
+    public ObservableCollection<MetricRow> GpuMetrics => _gpuMetrics;
+
+    public ObservableCollection<MetricRow> RamMetrics => _ramMetrics;
+
+    public bool ShowCpuTab
+    {
+        get => _showCpuTab;
+        set => SetField(ref _showCpuTab, value);
+    }
+
+    public bool ShowGpuTab
+    {
+        get => _showGpuTab;
+        set => SetField(ref _showGpuTab, value);
+    }
+
+    public bool ShowRamTab
+    {
+        get => _showRamTab;
+        set => SetField(ref _showRamTab, value);
     }
 
     public void AttachHotkey(Window window) => _hotkeyService.Register(window);
@@ -376,23 +409,29 @@ public class MainViewModel : ViewModelBase
                 AppendLog("Запуск FurMark");
                 try
                 {
-                    var format = await _furmark.StartAsync(Plan);
-                    var argsLog = _furmark.LastArgumentLog;
-                    if (!string.IsNullOrEmpty(argsLog) && _currentRun != null)
+                    await _furmark.StartAsync(Plan);
+                    AddRunNote(_furmark.SwitchLog);
+                    AddRunNote(_furmark.LastArgumentLog);
+                    if (!string.IsNullOrWhiteSpace(_furmark.SwitchLog))
                     {
-                        if (!_currentRun.Notes.Contains(argsLog))
-                        {
-                            _currentRun.Notes.Add(argsLog);
-                        }
+                        AppendLog(_furmark.SwitchLog!);
                     }
-                    AppendLog(format == 1
-                        ? "FurMark запущен с аргументами legacy"
-                        : "FurMark запущен с аргументами modern");
+                    if (!string.IsNullOrWhiteSpace(_furmark.LastArgumentLog))
+                    {
+                        AppendLog(_furmark.LastArgumentLog!);
+                    }
+                    AppendLog("FurMark GUI запущен");
                     await WaitWithCancellation(TimeSpan.FromMinutes(Math.Max(1, Plan.FurmarkMinutes)), token);
                 }
                 finally
                 {
                     await _furmark.StopAsync();
+                    AddRunNote(_furmark.LastStopLog);
+                    if (!string.IsNullOrWhiteSpace(_furmark.LastStopLog))
+                    {
+                        AppendLog(_furmark.LastStopLog!);
+                    }
+                    AddRunNote(FormatFurmarkOutputNote());
                 }
                 CaptureScreenshot($"furmark_final_{DateTime.Now:HHmmss}.png");
             }
@@ -459,7 +498,7 @@ public class MainViewModel : ViewModelBase
 
         if (!_fanSummaryLogged)
         {
-            _currentRun.Notes.Add("Fans: CPU —, GPU RPM —, GPU % —");
+            AddRunNote("Fans: CPU —, GPU RPM —, GPU % —");
             _fanSummaryLogged = true;
         }
 
@@ -505,6 +544,7 @@ public class MainViewModel : ViewModelBase
         _currentRun.Telemetry.Peaks.GpuTempMax = _samples.Max(s => s.GpuT);
         _currentRun.Telemetry.Peaks.CpuFanMax = _samples.Max(s => s.CpuRpm);
         _currentRun.Telemetry.Peaks.GpuFanMax = _samples.Max(s => s.GpuRpm);
+        _currentRun.Telemetry.Peaks.GpuFanPctMax = _samples.Max(s => s.GpuFanPct);
         _currentRun.Telemetry.Peaks.CpuFreqAvg = _samples.Average(s => s.CpuMHz);
         _currentRun.Telemetry.Peaks.GpuCoreAvg = _samples.Average(s => s.GpuCore);
         _currentRun.Telemetry.Peaks.GpuMemAvg = _samples.Average(s => s.GpuMem);
@@ -517,7 +557,16 @@ public class MainViewModel : ViewModelBase
 
     private void OnHwSample(HwSample sample)
     {
-        Application.Current?.Dispatcher.Invoke(() => UpdateLive(sample));
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher != null)
+        {
+            dispatcher.InvokeAsync(() => UpdateLive(sample));
+        }
+        else
+        {
+            UpdateLive(sample);
+        }
+
         TryAutoStopOnLimits(sample);
         AppendRunSample(sample);
     }
@@ -532,6 +581,132 @@ public class MainViewModel : ViewModelBase
         LiveCpuFan = FormatValue(sample.CpuFanRpm, "F0");
         LiveGpuFan = FormatValue(sample.GpuFanRpm, "F0");
         LiveGpuFanPct = FormatValue(sample.GpuFanPct, "F0");
+
+        var basicUpdates = new List<MetricUpdate>
+        {
+            new MetricUpdate("basic-cpu-temp", "CPU °C", "°C", sample.CpuTemp),
+            new MetricUpdate("basic-cpu-mhz", "CPU MHz", "MHz", sample.CpuMHz),
+            new MetricUpdate("basic-gpu-temp", "GPU °C", "°C", sample.GpuTemp),
+            new MetricUpdate("basic-gpu-core", "GPU Core MHz", "MHz", sample.GpuCoreMHz),
+            new MetricUpdate("basic-gpu-mem", "GPU Mem MHz", "MHz", sample.GpuMemMHz),
+            new MetricUpdate("basic-cpu-fan", "CPU Fan", "RPM", sample.CpuFanRpm)
+        };
+        var gpuFanUnit = sample.GpuFanRpm.HasValue ? "RPM" : sample.GpuFanPct.HasValue ? "%" : "RPM";
+        if (!sample.GpuFanRpm.HasValue && !sample.GpuFanPct.HasValue)
+        {
+            var existingGpuFan = _basicMetrics.FirstOrDefault(r => r.Key == "basic-gpu-fan");
+            if (existingGpuFan != null)
+            {
+                gpuFanUnit = existingGpuFan.Unit;
+            }
+        }
+        var gpuFanValue = sample.GpuFanRpm ?? sample.GpuFanPct;
+        basicUpdates.Add(new MetricUpdate("basic-gpu-fan", "GPU Fan", gpuFanUnit, gpuFanValue));
+
+        var cpuUpdates = new List<MetricUpdate>();
+        if (sample.CpuTemp.HasValue)
+        {
+            cpuUpdates.Add(new MetricUpdate("cpu-temp", "Температура CPU", "°C", sample.CpuTemp));
+        }
+        if (sample.CpuMHz.HasValue)
+        {
+            cpuUpdates.Add(new MetricUpdate("cpu-mhz-avg", "Частота (средняя)", "MHz", sample.CpuMHz));
+        }
+        foreach (var kv in sample.CpuCoreMHz.OrderBy(k => k.Key))
+        {
+            if (kv.Value.HasValue)
+            {
+                cpuUpdates.Add(new MetricUpdate($"cpu-core-{kv.Key}", $"Core #{kv.Key}", "MHz", kv.Value));
+            }
+        }
+
+        var gpuUpdates = new List<MetricUpdate>();
+        if (sample.GpuTemp.HasValue)
+        {
+            gpuUpdates.Add(new MetricUpdate("gpu-temp", "Температура GPU", "°C", sample.GpuTemp));
+        }
+        foreach (var kv in sample.GpuTemps.OrderBy(k => k.Key))
+        {
+            if (kv.Value.HasValue)
+            {
+                gpuUpdates.Add(new MetricUpdate($"gpu-temp-{kv.Key}", kv.Key, "°C", kv.Value));
+            }
+        }
+        if (sample.GpuCoreMHz.HasValue)
+        {
+            gpuUpdates.Add(new MetricUpdate("gpu-core", "Частота ядра", "MHz", sample.GpuCoreMHz));
+        }
+        if (sample.GpuMemMHz.HasValue)
+        {
+            gpuUpdates.Add(new MetricUpdate("gpu-mem", "Частота памяти", "MHz", sample.GpuMemMHz));
+        }
+        foreach (var kv in sample.GpuClocks.OrderBy(k => k.Key))
+        {
+            if (kv.Value.HasValue && kv.Key is not null)
+            {
+                gpuUpdates.Add(new MetricUpdate($"gpu-clock-{kv.Key}", kv.Key, "MHz", kv.Value));
+            }
+        }
+        if (sample.GpuFanRpm.HasValue)
+        {
+            gpuUpdates.Add(new MetricUpdate("gpu-fan-rpm", "Вентилятор (RPM)", "RPM", sample.GpuFanRpm));
+        }
+        if (sample.GpuFanPct.HasValue)
+        {
+            gpuUpdates.Add(new MetricUpdate("gpu-fan-pct", "Вентилятор (%)", "%", sample.GpuFanPct));
+        }
+
+        var ramUpdates = new List<MetricUpdate>();
+        foreach (var kv in sample.RamTemps.OrderBy(k => k.Key))
+        {
+            if (kv.Value.HasValue)
+            {
+                ramUpdates.Add(new MetricUpdate($"ram-temp-{kv.Key}", kv.Key, "°C", kv.Value));
+            }
+        }
+        foreach (var kv in sample.RamClocks.OrderBy(k => k.Key))
+        {
+            if (kv.Value.HasValue)
+            {
+                ramUpdates.Add(new MetricUpdate($"ram-clock-{kv.Key}", kv.Key, "MHz", kv.Value));
+            }
+        }
+
+        SyncMetrics(_basicMetrics, basicUpdates);
+        SyncMetrics(_cpuMetrics, cpuUpdates);
+        SyncMetrics(_gpuMetrics, gpuUpdates);
+        SyncMetrics(_ramMetrics, ramUpdates);
+
+        ShowCpuTab = sample.Availability.HasCpu && _cpuMetrics.Count > 0;
+        ShowGpuTab = sample.Availability.HasAnyGpu && _gpuMetrics.Count > 0;
+        ShowRamTab = sample.Availability.HasRam && _ramMetrics.Count > 0;
+    }
+
+    private void SyncMetrics(ObservableCollection<MetricRow> target, List<MetricUpdate> updates)
+    {
+        var updateDict = updates.ToDictionary(u => u.Key);
+        for (var i = target.Count - 1; i >= 0; i--)
+        {
+            var row = target[i];
+            if (!updateDict.TryGetValue(row.Key, out var update))
+            {
+                target.RemoveAt(i);
+                continue;
+            }
+
+            row.Label = update.Label;
+            row.Unit = update.Unit;
+            row.Value = update.Value;
+            updateDict.Remove(row.Key);
+        }
+
+        foreach (var update in updates)
+        {
+            if (updateDict.Remove(update.Key))
+            {
+                target.Add(new MetricRow(update.Key, update.Label, update.Unit, update.Value));
+            }
+        }
     }
 
     private static string? FormatValue(double? value, string format)
@@ -565,13 +740,13 @@ public class MainViewModel : ViewModelBase
             if (!_fanSummaryLogged && _currentRun != null)
             {
                 var fanLine = $"Fans: CPU {(sample.CpuFanRpm.HasValue ? "✓" : "—")}, GPU RPM {(sample.GpuFanRpm.HasValue ? "✓" : "—")}, GPU % {(sample.GpuFanPct.HasValue ? "✓" : "—")}";
-                _currentRun.Notes.Add(fanLine);
+                AddRunNote(fanLine);
                 _fanSummaryLogged = true;
             }
 
             var start = _currentRun.Session.StartedAt;
             var elapsed = (sample.Ts.ToUniversalTime() - start).TotalSeconds;
-            _samples.Add(new RunJsonTelemetrySample
+            var telemetrySample = new RunJsonTelemetrySample
             {
                 T = elapsed,
                 CpuT = sample.CpuTemp ?? 0,
@@ -582,8 +757,74 @@ public class MainViewModel : ViewModelBase
                 GpuCore = sample.GpuCoreMHz ?? 0,
                 GpuMem = sample.GpuMemMHz ?? 0,
                 GpuFanPct = sample.GpuFanPct ?? 0
-            });
+            };
+
+            foreach (var kv in sample.CpuCoreMHz)
+            {
+                if (kv.Value.HasValue)
+                {
+                    telemetrySample.CpuCoresMHz[$"Core #{kv.Key}"] = kv.Value.Value;
+                }
+            }
+
+            foreach (var kv in sample.GpuTemps)
+            {
+                if (kv.Value.HasValue)
+                {
+                    telemetrySample.GpuTemps[kv.Key] = kv.Value.Value;
+                }
+            }
+
+            foreach (var kv in sample.GpuClocks)
+            {
+                if (kv.Value.HasValue)
+                {
+                    telemetrySample.GpuClocks[kv.Key] = kv.Value.Value;
+                }
+            }
+
+            foreach (var kv in sample.RamTemps)
+            {
+                if (kv.Value.HasValue)
+                {
+                    telemetrySample.RamTemps[kv.Key] = kv.Value.Value;
+                }
+            }
+
+            foreach (var kv in sample.RamClocks)
+            {
+                if (kv.Value.HasValue)
+                {
+                    telemetrySample.RamClocks[kv.Key] = kv.Value.Value;
+                }
+            }
+
+            _samples.Add(telemetrySample);
         }
+    }
+
+    private void AddRunNote(string? note)
+    {
+        if (_currentRun == null || string.IsNullOrWhiteSpace(note))
+        {
+            return;
+        }
+
+        if (!_currentRun.Notes.Contains(note))
+        {
+            _currentRun.Notes.Add(note);
+        }
+    }
+
+    private string? FormatFurmarkOutputNote()
+    {
+        var snippet = _furmark.GetOutputSnippet();
+        if (string.IsNullOrWhiteSpace(snippet))
+        {
+            return null;
+        }
+
+        return $"furmark output (first 200 lines):{Environment.NewLine}{snippet}";
     }
 
     private void StopByUser()
@@ -717,3 +958,72 @@ public class MainViewModel : ViewModelBase
         }
     }
 }
+
+public sealed class MetricRow : ViewModelBase
+{
+    public MetricRow(string key, string label, string unit, double? value)
+    {
+        Key = key;
+        _label = label;
+        _unit = unit;
+        _value = value;
+    }
+
+    public string Key { get; }
+
+    private string _label;
+    public string Label
+    {
+        get => _label;
+        set => SetField(ref _label, value);
+    }
+
+    private string _unit;
+    public string Unit
+    {
+        get => _unit;
+        set
+        {
+            if (SetField(ref _unit, value))
+            {
+                RaisePropertyChanged(nameof(DisplayValue));
+            }
+        }
+    }
+
+    private double? _value;
+    public double? Value
+    {
+        get => _value;
+        set
+        {
+            if (SetField(ref _value, value))
+            {
+                RaisePropertyChanged(nameof(DisplayValue));
+            }
+        }
+    }
+
+    public string DisplayValue => FormatDisplay();
+
+    private string FormatDisplay()
+    {
+        if (!_value.HasValue)
+        {
+            return "—";
+        }
+
+        var format = _unit switch
+        {
+            "°C" => "F1",
+            "MHz" => "F0",
+            "RPM" => "F0",
+            "%" => "F0",
+            _ => "F1"
+        };
+
+        return _value.Value.ToString(format, CultureInfo.InvariantCulture);
+    }
+}
+
+internal readonly record struct MetricUpdate(string Key, string Label, string Unit, double? Value);

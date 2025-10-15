@@ -41,49 +41,185 @@
         async function loadData() {
             const response = await fetch('run.json');
             const data = await response.json();
-            const labels = data.telemetry.timeline.map(x => x.t);
-            const cpuT = data.telemetry.timeline.map(x => x.cpuT);
-            const gpuT = data.telemetry.timeline.map(x => x.gpuT);
-            const cpuFreq = data.telemetry.timeline.map(x => x.cpuMHz);
-            const gpuCore = data.telemetry.timeline.map(x => x.gpuCore);
-            const gpuMem = data.telemetry.timeline.map(x => x.gpuMem);
-            const cpuFan = data.telemetry.timeline.map(x => x.cpuRpm);
-            const gpuFan = data.telemetry.timeline.map(x => x.gpuRpm);
+            const timeline = data.telemetry.timeline;
+            const length = timeline.length;
+            const labels = timeline.map(x => x.t);
+            const cpuT = timeline.map(x => x.cpuT);
+            const gpuT = timeline.map(x => x.gpuT);
+            const cpuFreq = timeline.map(x => x.cpuMHz);
+            const gpuCore = timeline.map(x => x.gpuCore);
+            const gpuMem = timeline.map(x => x.gpuMem);
+            const cpuFan = timeline.map(x => x.cpuRpm);
+            const gpuFan = timeline.map(x => x.gpuRpm);
+            const gpuFanPct = timeline.map(x => x.gpuFanPct);
+
+            const cpuCores = {};
+            const gpuTempsExtra = {};
+            const gpuClocksExtra = {};
+            const ramTemps = {};
+            const ramClocks = {};
+
+            timeline.forEach((sample, index) => {
+                const cpuCoreValues = sample.cpuCoresMHz || {};
+                Object.entries(cpuCoreValues).forEach(([key, value]) => {
+                    if (!cpuCores[key]) {
+                        cpuCores[key] = new Array(length).fill(null);
+                    }
+                    cpuCores[key][index] = value;
+                });
+
+                const gpuTempValues = sample.gpuTemps || {};
+                Object.entries(gpuTempValues).forEach(([key, value]) => {
+                    if (!gpuTempsExtra[key]) {
+                        gpuTempsExtra[key] = new Array(length).fill(null);
+                    }
+                    gpuTempsExtra[key][index] = value;
+                });
+
+                const gpuClockValues = sample.gpuClocks || {};
+                Object.entries(gpuClockValues).forEach(([key, value]) => {
+                    if (!gpuClocksExtra[key]) {
+                        gpuClocksExtra[key] = new Array(length).fill(null);
+                    }
+                    gpuClocksExtra[key][index] = value;
+                });
+
+                const ramTempValues = sample.ramTemps || {};
+                Object.entries(ramTempValues).forEach(([key, value]) => {
+                    if (!ramTemps[key]) {
+                        ramTemps[key] = new Array(length).fill(null);
+                    }
+                    ramTemps[key][index] = value;
+                });
+
+                const ramClockValues = sample.ramClocks || {};
+                Object.entries(ramClockValues).forEach(([key, value]) => {
+                    if (!ramClocks[key]) {
+                        ramClocks[key] = new Array(length).fill(null);
+                    }
+                    ramClocks[key][index] = value;
+                });
+            });
 
             const ctxTemp = document.getElementById('chartTemp');
+            const tempDatasets = [
+                { label: 'CPU °C', data: cpuT, borderColor: '#e84118', fill: false },
+                { label: 'GPU °C', data: gpuT, borderColor: '#0097e6', fill: false }
+            ];
+            Object.entries(gpuTempsExtra).forEach(([key, values]) => {
+                if (key.toLowerCase().includes('cpu')) {
+                    return;
+                }
+                const hasValue = values.some(v => v !== null);
+                if (hasValue) {
+                    tempDatasets.push({
+                        label: key,
+                        data: values,
+                        borderColor: '#8c7ae6',
+                        fill: false
+                    });
+                }
+            });
+            Object.entries(ramTemps).forEach(([key, values]) => {
+                const hasValue = values.some(v => v !== null);
+                if (hasValue) {
+                    tempDatasets.push({
+                        label: key,
+                        data: values,
+                        borderColor: '#1dd1a1',
+                        fill: false
+                    });
+                }
+            });
             new Chart(ctxTemp, {
                 type: 'line',
                 data: {
                     labels,
-                    datasets: [
-                        { label: 'CPU °C', data: cpuT, borderColor: '#e84118', fill: false },
-                        { label: 'GPU °C', data: gpuT, borderColor: '#0097e6', fill: false }
-                    ]
+                    datasets: tempDatasets
                 }
             });
 
             const ctxFreq = document.getElementById('chartFreq');
+            const freqDatasets = [
+                { label: 'CPU MHz', data: cpuFreq, borderColor: '#44bd32', fill: false },
+                { label: 'GPU Core MHz', data: gpuCore, borderColor: '#8c7ae6', fill: false },
+                { label: 'GPU Mem MHz', data: gpuMem, borderColor: '#487eb0', fill: false }
+            ];
+            const coreColors = ['#c23616', '#192a56', '#273c75', '#e1b12c', '#009432', '#cd6133', '#0984e3', '#d63031'];
+            Object.entries(cpuCores).slice(0, 16).forEach(([key, values], index) => {
+                const hasValue = values.some(v => v !== null);
+                if (hasValue) {
+                    freqDatasets.push({
+                        label: key,
+                        data: values,
+                        borderColor: coreColors[index % coreColors.length],
+                        fill: false
+                    });
+                }
+            });
+            Object.entries(gpuClocksExtra).forEach(([key, values]) => {
+                const hasValue = values.some(v => v !== null);
+                if (hasValue) {
+                    freqDatasets.push({
+                        label: key,
+                        data: values,
+                        borderColor: '#6c5ce7',
+                        fill: false
+                    });
+                }
+            });
+            Object.entries(ramClocks).forEach(([key, values]) => {
+                const hasValue = values.some(v => v !== null);
+                if (hasValue) {
+                    freqDatasets.push({
+                        label: key,
+                        data: values,
+                        borderColor: '#1e90ff',
+                        fill: false
+                    });
+                }
+            });
             new Chart(ctxFreq, {
                 type: 'line',
                 data: {
                     labels,
-                    datasets: [
-                        { label: 'CPU MHz', data: cpuFreq, borderColor: '#44bd32', fill: false },
-                        { label: 'GPU Core MHz', data: gpuCore, borderColor: '#8c7ae6', fill: false },
-                        { label: 'GPU Mem MHz', data: gpuMem, borderColor: '#487eb0', fill: false }
-                    ]
+                    datasets: freqDatasets
                 }
             });
 
             const ctxFan = document.getElementById('chartFan');
+            const fanDatasets = [];
+            if (cpuFan.some(x => x > 0)) {
+                fanDatasets.push({ label: 'CPU Fan RPM', data: cpuFan, borderColor: '#fbc531', fill: false, yAxisID: 'rpm' });
+            }
+            if (gpuFan.some(x => x > 0)) {
+                fanDatasets.push({ label: 'GPU Fan RPM', data: gpuFan, borderColor: '#273c75', fill: false, yAxisID: 'rpm' });
+            }
+            if (gpuFanPct.some(x => x > 0)) {
+                fanDatasets.push({ label: 'GPU Fan %', data: gpuFanPct, borderColor: '#e1b12c', fill: false, yAxisID: 'pct' });
+            }
             new Chart(ctxFan, {
                 type: 'line',
                 data: {
                     labels,
-                    datasets: [
-                        { label: 'CPU Fan RPM', data: cpuFan, borderColor: '#fbc531', fill: false },
-                        { label: 'GPU Fan RPM', data: gpuFan, borderColor: '#273c75', fill: false }
-                    ]
+                    datasets: fanDatasets
+                },
+                options: {
+                    scales: {
+                        rpm: {
+                            type: 'linear',
+                            position: 'left',
+                            beginAtZero: true
+                        },
+                        pct: {
+                            type: 'linear',
+                            position: 'right',
+                            beginAtZero: true,
+                            ticks: {
+                                callback: value => `${value}%`
+                            }
+                        }
+                    }
                 }
             });
 

@@ -122,6 +122,21 @@ public class RunJsonTelemetrySample
     [JsonPropertyName("gpuFanPct")]
     public double GpuFanPct { get; set; }
         = 0;
+
+    [JsonPropertyName("cpuCoresMHz")]
+    public Dictionary<string, double> CpuCoresMHz { get; set; } = new();
+
+    [JsonPropertyName("gpuTemps")] 
+    public Dictionary<string, double> GpuTemps { get; set; } = new();
+
+    [JsonPropertyName("gpuClocks")]
+    public Dictionary<string, double> GpuClocks { get; set; } = new();
+
+    [JsonPropertyName("ramTemps")]
+    public Dictionary<string, double> RamTemps { get; set; } = new();
+
+    [JsonPropertyName("ramClocks")]
+    public Dictionary<string, double> RamClocks { get; set; } = new();
 }
 
 public class RunJsonPeaks
@@ -140,6 +155,10 @@ public class RunJsonPeaks
 
     [JsonPropertyName("gpuFanMax")]
     public double GpuFanMax { get; set; }
+        = 0;
+
+    [JsonPropertyName("gpuFanPctMax")]
+    public double GpuFanPctMax { get; set; }
         = 0;
 
     [JsonPropertyName("cpuFreqAvg")]
