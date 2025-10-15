@@ -14,6 +14,8 @@ namespace ServiceBench.App.Services;
 
 public class ScreenshotService
 {
+    private const double CompressionScale = 0.75;
+
     [DllImport("user32.dll")]
     private static extern IntPtr FindWindow(string? lpClassName, string? lpWindowName);
 
@@ -37,7 +39,7 @@ public class ScreenshotService
         public int Bottom;
     }
 
-    public bool SaveElementPng(FrameworkElement? element, string filePath)
+    public bool SaveElementPng(FrameworkElement? element, string filePath, bool compress)
     {
         if (element == null)
         {
@@ -61,8 +63,22 @@ public class ScreenshotService
 
                 var rtb = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
                 rtb.Render(element);
+                BitmapSource source = rtb;
+
+                if (compress)
+                {
+                    var scale = Math.Min(1.0, Math.Max(CompressionScale, 0.1));
+                    if (scale < 0.999)
+                    {
+                        var transform = new ScaleTransform(scale, scale);
+                        var transformed = new TransformedBitmap(rtb, transform);
+                        transformed.Freeze();
+                        source = transformed;
+                    }
+                }
+
                 var encoder = new PngBitmapEncoder();
-                encoder.Frames.Add(BitmapFrame.Create(rtb));
+                encoder.Frames.Add(BitmapFrame.Create(source));
                 using var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write);
                 encoder.Save(stream);
                 return true;
@@ -74,7 +90,7 @@ public class ScreenshotService
         }
     }
 
-    public string CaptureWindow(string windowTitleSubstring, string filePath)
+    public string CaptureWindow(string windowTitleSubstring, string filePath, bool compress)
     {
         var handle = FindWindowByTitle(windowTitleSubstring);
         if (handle == IntPtr.Zero)
@@ -92,7 +108,9 @@ public class ScreenshotService
         using var bitmap = new Bitmap(width, height);
         using var graphics = Graphics.FromImage(bitmap);
         graphics.CopyFromScreen(rect.Left, rect.Top, 0, 0, new DrawingSize(width, height));
-        bitmap.Save(filePath, ImageFormat.Png);
+
+        using var output = compress ? ResizeBitmap(bitmap, CompressionScale) : (Bitmap)bitmap.Clone();
+        output.Save(filePath, ImageFormat.Png);
         return filePath;
     }
 
@@ -111,5 +129,21 @@ public class ScreenshotService
             return true;
         }, IntPtr.Zero);
         return found;
+    }
+
+    private static Bitmap ResizeBitmap(Bitmap source, double scale)
+    {
+        if (scale >= 0.999)
+        {
+            return (Bitmap)source.Clone();
+        }
+
+        var width = Math.Max(1, (int)Math.Round(source.Width * scale));
+        var height = Math.Max(1, (int)Math.Round(source.Height * scale));
+        var resized = new Bitmap(width, height);
+        using var g = Graphics.FromImage(resized);
+        g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+        g.DrawImage(source, 0, 0, width, height);
+        return resized;
     }
 }

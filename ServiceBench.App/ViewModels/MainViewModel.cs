@@ -43,6 +43,11 @@ public class MainViewModel : ViewModelBase
     private readonly object _lock = new();
     private bool _isStopping;
     private System.Timers.Timer? _screenshotTimer;
+    private string _currentPhase = "IDLE";
+    private string _currentTestName = "IDLE";
+    private string _currentPhaseStatus = "READY";
+    private RunJsonTelemetrySample? _lastTelemetrySample;
+    private HwSample? _lastHwSample;
 
     private string _statusMessage = "Готово";
     private string _logText = string.Empty;
@@ -244,6 +249,9 @@ public class MainViewModel : ViewModelBase
             _isStopping = false;
             _samples.Clear();
             _fanSummaryLogged = false;
+            _lastTelemetrySample = null;
+            _lastHwSample = null;
+            SetPhase("IDLE", "IDLE", "READY");
             StatusMessage = "Запуск тестов...";
             AppendLog("Начало прогона");
 
@@ -253,6 +261,9 @@ public class MainViewModel : ViewModelBase
             var startedAt = DateTime.UtcNow;
             _runFolder = FileManager.BuildRunFolder(_device, tag, startedAt);
             _csvPath = Plan.SaveAidaCsv ? Path.Combine(_runFolder, "aida_sensors.csv") : Path.Combine(Path.GetTempPath(), $"servicebench_{Guid.NewGuid():N}.csv");
+
+            _config.SaveAidaCsv = Plan.SaveAidaCsv;
+            _config.CompressScreenshots = Plan.CompressScreenshots;
 
             _currentRun = new RunJson
             {
@@ -345,6 +356,7 @@ public class MainViewModel : ViewModelBase
 
             if (Plan.UseAida)
             {
+                await UpdatePhaseAsync("AIDA", "AIDA64", "RUNNING");
                 AppendLog("Запуск AIDA64");
                 try
                 {
@@ -355,7 +367,9 @@ public class MainViewModel : ViewModelBase
                 {
                     await _aida.StopAsync();
                 }
+                await UpdatePhaseAsync("AIDA", "AIDA64", "COMPLETED");
                 CaptureScreenshot("final_sensors.png");
+                await UpdatePhaseAsync("IDLE", "IDLE", "WAITING");
             }
 
             if (token.IsCancellationRequested)
@@ -369,33 +383,19 @@ public class MainViewModel : ViewModelBase
                 AppendLog("Запуск OCCT профилей");
                 try
                 {
-                    await _occt.StartAsync(Plan, token);
-                    var totalMinutes = 0;
-                    var profiles = 0;
-                    if (Plan.OcctCpuSmall)
-                    {
-                        totalMinutes += Plan.OcctCpuMinutes;
-                        profiles++;
-                    }
-                    if (Plan.OcctGpu3D)
-                    {
-                        totalMinutes += Plan.OcctGpuMinutes;
-                        profiles++;
-                    }
-                    if (Plan.OcctVram)
-                    {
-                        totalMinutes += Plan.OcctVramMinutes;
-                        profiles++;
-                    }
-
-                    var wait = TimeSpan.FromMinutes(Math.Max(1, totalMinutes)) + TimeSpan.FromSeconds(Math.Max(0, profiles - 1) * 10);
-                    await WaitWithCancellation(wait, token);
+                    await _occt.RunAsync(
+                        Plan,
+                        UpdatePhaseAsync,
+                        AppendLog,
+                        ShowOcctPromptAsync,
+                        token);
                 }
                 finally
                 {
                     await _occt.StopAsync();
                 }
                 CaptureScreenshot($"occt_final_{DateTime.Now:HHmmss}.png");
+                await UpdatePhaseAsync("IDLE", "IDLE", "WAITING");
             }
 
             if (token.IsCancellationRequested)
@@ -406,6 +406,7 @@ public class MainViewModel : ViewModelBase
 
             if (Plan.UseFurmark)
             {
+                await UpdatePhaseAsync("FURMARK", "FurMark", "RUNNING");
                 AppendLog("Запуск FurMark");
                 try
                 {
@@ -434,6 +435,8 @@ public class MainViewModel : ViewModelBase
                     AddRunNote(FormatFurmarkOutputNote());
                 }
                 CaptureScreenshot($"furmark_final_{DateTime.Now:HHmmss}.png");
+                await UpdatePhaseAsync("FURMARK", "FurMark", "COMPLETED");
+                await UpdatePhaseAsync("IDLE", "IDLE", "WAITING");
             }
 
             CompleteRunAndNotify(_stopStatus ?? "OK");
@@ -473,10 +476,12 @@ public class MainViewModel : ViewModelBase
         };
 
         CaptureScreenshot($"final_{DateTime.Now:HHmmss}.png");
+        SetPhase("IDLE", "IDLE", "COMPLETE");
         FinishRun(status, reason);
 
         Application.Current?.Dispatcher.Invoke(() =>
         {
+            var (cpuTemp, gpuTemp) = GetLatestTemperatures();
             var (message, icon) = status switch
             {
                 "STOP_BY_OVERHEAT" => ("Тест завершён в связи с перегревом", MessageBoxImage.Error),
@@ -485,7 +490,8 @@ public class MainViewModel : ViewModelBase
                 _ => ("Произошла ошибка", MessageBoxImage.Error)
             };
 
-            MessageBox.Show(message, "ServiceBench", MessageBoxButton.OK, icon);
+            var details = $"CPU: {cpuTemp}\nGPU: {gpuTemp}";
+            MessageBox.Show($"{message}\n{details}", "ServiceBench", MessageBoxButton.OK, icon);
         });
     }
 
@@ -540,14 +546,50 @@ public class MainViewModel : ViewModelBase
             return;
         }
 
-        _currentRun.Telemetry.Peaks.CpuTempMax = _samples.Max(s => s.CpuT);
-        _currentRun.Telemetry.Peaks.GpuTempMax = _samples.Max(s => s.GpuT);
-        _currentRun.Telemetry.Peaks.CpuFanMax = _samples.Max(s => s.CpuRpm);
-        _currentRun.Telemetry.Peaks.GpuFanMax = _samples.Max(s => s.GpuRpm);
-        _currentRun.Telemetry.Peaks.GpuFanPctMax = _samples.Max(s => s.GpuFanPct);
-        _currentRun.Telemetry.Peaks.CpuFreqAvg = _samples.Average(s => s.CpuMHz);
-        _currentRun.Telemetry.Peaks.GpuCoreAvg = _samples.Average(s => s.GpuCore);
-        _currentRun.Telemetry.Peaks.GpuMemAvg = _samples.Average(s => s.GpuMem);
+        double MaxOrDefault(Func<RunJsonTelemetrySample, double?> selector)
+            => _samples.Select(selector).Where(v => v.HasValue).Select(v => v!.Value).DefaultIfEmpty(0).Max();
+
+        double AvgOrDefault(Func<RunJsonTelemetrySample, double?> selector)
+        {
+            var values = _samples.Select(selector).Where(v => v.HasValue).Select(v => v!.Value).ToArray();
+            return values.Length == 0 ? 0 : values.Average();
+        }
+
+        _currentRun.Telemetry.Peaks.CpuTempMax = MaxOrDefault(s => s.CpuT);
+        _currentRun.Telemetry.Peaks.GpuTempMax = MaxOrDefault(s => s.GpuT);
+        _currentRun.Telemetry.Peaks.CpuFanMax = MaxOrDefault(s => s.CpuRpm);
+        _currentRun.Telemetry.Peaks.GpuFanMax = MaxOrDefault(s => s.GpuRpm);
+        _currentRun.Telemetry.Peaks.GpuFanPctMax = MaxOrDefault(s => s.GpuFanPct);
+        _currentRun.Telemetry.Peaks.CpuFreqAvg = AvgOrDefault(s => s.CpuMHz);
+        _currentRun.Telemetry.Peaks.GpuCoreAvg = AvgOrDefault(s => s.GpuCore);
+        _currentRun.Telemetry.Peaks.GpuMemAvg = AvgOrDefault(s => s.GpuMem);
+    }
+
+    private (string Cpu, string Gpu) GetLatestTemperatures()
+    {
+        double? cpu = _lastTelemetrySample?.CpuT;
+        double? gpu = _lastTelemetrySample?.GpuT;
+
+        if (!cpu.HasValue || !gpu.HasValue)
+        {
+            var lastSample = _samples.LastOrDefault();
+            cpu ??= lastSample?.CpuT;
+            gpu ??= lastSample?.GpuT;
+        }
+
+        if (!cpu.HasValue && _lastHwSample != null)
+        {
+            cpu = _lastHwSample.CpuTemp;
+        }
+
+        if (!gpu.HasValue && _lastHwSample != null)
+        {
+            gpu = _lastHwSample.GpuTemp;
+        }
+
+        static string Format(double? value) => value.HasValue ? $"{value.Value:F1} °C" : "нет данных";
+
+        return (Format(cpu), Format(gpu));
     }
 
     private void AppendLog(string message)
@@ -557,6 +599,7 @@ public class MainViewModel : ViewModelBase
 
     private void OnHwSample(HwSample sample)
     {
+        _lastHwSample = sample;
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher != null)
         {
@@ -724,8 +767,43 @@ public class MainViewModel : ViewModelBase
         {
             _isStopping = true;
             _stopStatus = "STOP_BY_OVERHEAT";
+            SetPhase(_currentPhase, _currentTestName, "STOPPING");
+            AddRunNote($"Авто-стоп: CPU {(sample.CpuTemp.HasValue ? sample.CpuTemp.Value.ToString("F1", CultureInfo.InvariantCulture) : "—")} °C, GPU {(sample.GpuTemp.HasValue ? sample.GpuTemp.Value.ToString("F1", CultureInfo.InvariantCulture) : "—")} °C");
             _runCts.Cancel();
         }
+    }
+
+    private void SetPhase(string phase, string testName, string status)
+    {
+        _currentPhase = phase;
+        _currentTestName = testName;
+        _currentPhaseStatus = status;
+    }
+
+    private Task UpdatePhaseAsync(string phase, string testName, string status)
+    {
+        if (Application.Current?.Dispatcher != null)
+        {
+            return Application.Current.Dispatcher.InvokeAsync(() => SetPhase(phase, testName, status)).Task;
+        }
+
+        SetPhase(phase, testName, status);
+        return Task.CompletedTask;
+    }
+
+    private Task ShowOcctPromptAsync(string message)
+    {
+        AddRunNote(message);
+        if (Application.Current?.Dispatcher != null)
+        {
+            return Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                MessageBox.Show(message, "ServiceBench", MessageBoxButton.OK, MessageBoxImage.Information);
+            }).Task;
+        }
+
+        MessageBox.Show(message, "ServiceBench", MessageBoxButton.OK, MessageBoxImage.Information);
+        return Task.CompletedTask;
     }
 
     private void AppendRunSample(HwSample sample)
@@ -749,57 +827,46 @@ public class MainViewModel : ViewModelBase
             var telemetrySample = new RunJsonTelemetrySample
             {
                 T = elapsed,
-                CpuT = sample.CpuTemp ?? 0,
-                GpuT = sample.GpuTemp ?? 0,
-                CpuRpm = sample.CpuFanRpm ?? 0,
-                GpuRpm = sample.GpuFanRpm ?? 0,
-                CpuMHz = sample.CpuMHz ?? 0,
-                GpuCore = sample.GpuCoreMHz ?? 0,
-                GpuMem = sample.GpuMemMHz ?? 0,
-                GpuFanPct = sample.GpuFanPct ?? 0
+                Phase = _currentPhase,
+                TestName = _currentTestName,
+                Status = _currentPhaseStatus,
+                CpuT = sample.CpuTemp,
+                GpuT = sample.GpuTemp,
+                CpuRpm = sample.CpuFanRpm,
+                GpuRpm = sample.GpuFanRpm,
+                CpuMHz = sample.CpuMHz,
+                GpuCore = sample.GpuCoreMHz,
+                GpuMem = sample.GpuMemMHz,
+                GpuFanPct = sample.GpuFanPct
             };
 
             foreach (var kv in sample.CpuCoreMHz)
             {
-                if (kv.Value.HasValue)
-                {
-                    telemetrySample.CpuCoresMHz[$"Core #{kv.Key}"] = kv.Value.Value;
-                }
+                telemetrySample.CpuCoresMHz[$"Core #{kv.Key}"] = kv.Value;
             }
 
             foreach (var kv in sample.GpuTemps)
             {
-                if (kv.Value.HasValue)
-                {
-                    telemetrySample.GpuTemps[kv.Key] = kv.Value.Value;
-                }
+                telemetrySample.GpuTemps[kv.Key] = kv.Value;
             }
 
             foreach (var kv in sample.GpuClocks)
             {
-                if (kv.Value.HasValue)
-                {
-                    telemetrySample.GpuClocks[kv.Key] = kv.Value.Value;
-                }
+                telemetrySample.GpuClocks[kv.Key] = kv.Value;
             }
 
             foreach (var kv in sample.RamTemps)
             {
-                if (kv.Value.HasValue)
-                {
-                    telemetrySample.RamTemps[kv.Key] = kv.Value.Value;
-                }
+                telemetrySample.RamTemps[kv.Key] = kv.Value;
             }
 
             foreach (var kv in sample.RamClocks)
             {
-                if (kv.Value.HasValue)
-                {
-                    telemetrySample.RamClocks[kv.Key] = kv.Value.Value;
-                }
+                telemetrySample.RamClocks[kv.Key] = kv.Value;
             }
 
             _samples.Add(telemetrySample);
+            _lastTelemetrySample = telemetrySample;
         }
     }
 
@@ -835,6 +902,7 @@ public class MainViewModel : ViewModelBase
         }
 
         _stopStatus = "STOP_BY_USER";
+        SetPhase(_currentPhase, _currentTestName, "STOPPING");
         _runCts.Cancel();
     }
 
@@ -905,14 +973,14 @@ public class MainViewModel : ViewModelBase
             var saved = false;
             if (element != null)
             {
-                saved = _screenshotService.SaveElementPng(element, path);
+                saved = _screenshotService.SaveElementPng(element, path, _config.CompressScreenshots);
             }
 
             if (!saved)
             {
                 try
                 {
-                    _screenshotService.CaptureWindow(Config.DefaultSensorWindowTitle, path);
+                    _screenshotService.CaptureWindow(Config.DefaultSensorWindowTitle, path, _config.CompressScreenshots);
                     saved = true;
                 }
                 catch

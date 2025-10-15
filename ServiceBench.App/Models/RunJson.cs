@@ -91,52 +91,75 @@ public class RunJsonTelemetrySample
     public double T { get; set; }
         = 0;
 
+    [JsonPropertyName("phase")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Phase { get; set; }
+        = null;
+
+    [JsonPropertyName("test")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? TestName { get; set; }
+        = null;
+
+    [JsonPropertyName("status")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Status { get; set; }
+        = null;
+
     [JsonPropertyName("cpuT")]
-    public double CpuT { get; set; }
-        = 0;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? CpuT { get; set; }
+        = null;
 
     [JsonPropertyName("gpuT")]
-    public double GpuT { get; set; }
-        = 0;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? GpuT { get; set; }
+        = null;
 
     [JsonPropertyName("cpuRpm")]
-    public double CpuRpm { get; set; }
-        = 0;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? CpuRpm { get; set; }
+        = null;
 
     [JsonPropertyName("gpuRpm")]
-    public double GpuRpm { get; set; }
-        = 0;
-
-    [JsonPropertyName("cpuMHz")]
-    public double CpuMHz { get; set; }
-        = 0;
-
-    [JsonPropertyName("gpuCore")]
-    public double GpuCore { get; set; }
-        = 0;
-
-    [JsonPropertyName("gpuMem")]
-    public double GpuMem { get; set; }
-        = 0;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? GpuRpm { get; set; }
+        = null;
 
     [JsonPropertyName("gpuFanPct")]
-    public double GpuFanPct { get; set; }
-        = 0;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? GpuFanPct { get; set; }
+        = null;
+
+    [JsonPropertyName("cpuMHz")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? CpuMHz { get; set; }
+        = null;
+
+    [JsonPropertyName("gpuCore")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? GpuCore { get; set; }
+        = null;
+
+    [JsonPropertyName("gpuMem")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? GpuMem { get; set; }
+        = null;
 
     [JsonPropertyName("cpuCoresMHz")]
-    public Dictionary<string, double> CpuCoresMHz { get; set; } = new();
+    public Dictionary<string, double?> CpuCoresMHz { get; set; } = new();
 
-    [JsonPropertyName("gpuTemps")] 
-    public Dictionary<string, double> GpuTemps { get; set; } = new();
+    [JsonPropertyName("gpuTemps")]
+    public Dictionary<string, double?> GpuTemps { get; set; } = new();
 
     [JsonPropertyName("gpuClocks")]
-    public Dictionary<string, double> GpuClocks { get; set; } = new();
+    public Dictionary<string, double?> GpuClocks { get; set; } = new();
 
     [JsonPropertyName("ramTemps")]
-    public Dictionary<string, double> RamTemps { get; set; } = new();
+    public Dictionary<string, double?> RamTemps { get; set; } = new();
 
     [JsonPropertyName("ramClocks")]
-    public Dictionary<string, double> RamClocks { get; set; } = new();
+    public Dictionary<string, double?> RamClocks { get; set; } = new();
 }
 
 public class RunJsonPeaks

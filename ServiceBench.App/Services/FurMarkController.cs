@@ -95,7 +95,8 @@ public sealed class FurMarkController
             throw new InvalidOperationException($"FurMark не принял аргументы. Путь: {exe}{Environment.NewLine}{failure}");
         }
 
-        _argsLog = $"furmark args: gui {arguments} [max-time: {(supportsMaxTime ? "yes" : "no")}]";
+        var pid = _process.Id;
+        _argsLog = $"furmark args: gui {arguments} [max-time: {(supportsMaxTime ? "yes" : "no")}] (pid: {pid})";
 
         if (!supportsMaxTime)
         {

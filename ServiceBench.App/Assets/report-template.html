@@ -27,6 +27,19 @@
             <p>Длительность: {{duration}}</p>
         </section>
         <section>
+            <h2>Ключевые показатели</h2>
+            <div class="cards">
+                <div class="card"><h3>Макс. CPU °C</h3><p>{{cpuTempMax}}</p></div>
+                <div class="card"><h3>Макс. GPU °C</h3><p>{{gpuTempMax}}</p></div>
+                <div class="card"><h3>Макс. CPU Fan RPM</h3><p>{{cpuFanMax}}</p></div>
+                <div class="card"><h3>Макс. GPU Fan RPM</h3><p>{{gpuFanMax}}</p></div>
+                <div class="card"><h3>Макс. GPU Fan %</h3><p>{{gpuFanPctMax}}</p></div>
+                <div class="card"><h3>CPU MHz (avg)</h3><p>{{cpuFreqAvg}}</p></div>
+                <div class="card"><h3>GPU Core MHz (avg)</h3><p>{{gpuCoreAvg}}</p></div>
+                <div class="card"><h3>GPU Mem MHz (avg)</h3><p>{{gpuMemAvg}}</p></div>
+            </div>
+        </section>
+        <section>
             <h2>Графики</h2>
             <canvas id="chartTemp"></canvas>
             <canvas id="chartFreq"></canvas>
@@ -36,6 +49,10 @@
             <h2>Скриншоты</h2>
             <div class="gallery" id="screens"></div>
         </section>
+        <section>
+            <h2>Заметки</h2>
+            {{notes}}
+        </section>
     </main>
     <script>
         async function loadData() {
@@ -44,14 +61,14 @@
             const timeline = data.telemetry.timeline;
             const length = timeline.length;
             const labels = timeline.map(x => x.t);
-            const cpuT = timeline.map(x => x.cpuT);
-            const gpuT = timeline.map(x => x.gpuT);
-            const cpuFreq = timeline.map(x => x.cpuMHz);
-            const gpuCore = timeline.map(x => x.gpuCore);
-            const gpuMem = timeline.map(x => x.gpuMem);
-            const cpuFan = timeline.map(x => x.cpuRpm);
-            const gpuFan = timeline.map(x => x.gpuRpm);
-            const gpuFanPct = timeline.map(x => x.gpuFanPct);
+            const cpuT = timeline.map(x => x.cpuT ?? null);
+            const gpuT = timeline.map(x => x.gpuT ?? null);
+            const cpuFreq = timeline.map(x => x.cpuMHz ?? null);
+            const gpuCore = timeline.map(x => x.gpuCore ?? null);
+            const gpuMem = timeline.map(x => x.gpuMem ?? null);
+            const cpuFan = timeline.map(x => x.cpuRpm ?? null);
+            const gpuFan = timeline.map(x => x.gpuRpm ?? null);
+            const gpuFanPct = timeline.map(x => x.gpuFanPct ?? null);
 
             const cpuCores = {};
             const gpuTempsExtra = {};
@@ -65,7 +82,7 @@
                     if (!cpuCores[key]) {
                         cpuCores[key] = new Array(length).fill(null);
                     }
-                    cpuCores[key][index] = value;
+                    cpuCores[key][index] = value ?? null;
                 });
 
                 const gpuTempValues = sample.gpuTemps || {};
@@ -73,7 +90,7 @@
                     if (!gpuTempsExtra[key]) {
                         gpuTempsExtra[key] = new Array(length).fill(null);
                     }
-                    gpuTempsExtra[key][index] = value;
+                    gpuTempsExtra[key][index] = value ?? null;
                 });
 
                 const gpuClockValues = sample.gpuClocks || {};
@@ -81,7 +98,7 @@
                     if (!gpuClocksExtra[key]) {
                         gpuClocksExtra[key] = new Array(length).fill(null);
                     }
-                    gpuClocksExtra[key][index] = value;
+                    gpuClocksExtra[key][index] = value ?? null;
                 });
 
                 const ramTempValues = sample.ramTemps || {};
@@ -89,7 +106,7 @@
                     if (!ramTemps[key]) {
                         ramTemps[key] = new Array(length).fill(null);
                     }
-                    ramTemps[key][index] = value;
+                    ramTemps[key][index] = value ?? null;
                 });
 
                 const ramClockValues = sample.ramClocks || {};
@@ -97,7 +114,7 @@
                     if (!ramClocks[key]) {
                         ramClocks[key] = new Array(length).fill(null);
                     }
-                    ramClocks[key][index] = value;
+                    ramClocks[key][index] = value ?? null;
                 });
             });
 
@@ -189,13 +206,13 @@
 
             const ctxFan = document.getElementById('chartFan');
             const fanDatasets = [];
-            if (cpuFan.some(x => x > 0)) {
+            if (cpuFan.some(x => x != null && x > 0)) {
                 fanDatasets.push({ label: 'CPU Fan RPM', data: cpuFan, borderColor: '#fbc531', fill: false, yAxisID: 'rpm' });
             }
-            if (gpuFan.some(x => x > 0)) {
+            if (gpuFan.some(x => x != null && x > 0)) {
                 fanDatasets.push({ label: 'GPU Fan RPM', data: gpuFan, borderColor: '#273c75', fill: false, yAxisID: 'rpm' });
             }
-            if (gpuFanPct.some(x => x > 0)) {
+            if (gpuFanPct.some(x => x != null && x > 0)) {
                 fanDatasets.push({ label: 'GPU Fan %', data: gpuFanPct, borderColor: '#e1b12c', fill: false, yAxisID: 'pct' });
             }
             new Chart(ctxFan, {

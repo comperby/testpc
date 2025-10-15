@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Management;
 using ServiceBench.App.Models;
@@ -12,7 +13,7 @@ public class DeviceDetector
         var type = DetectDeviceType();
         var model = GetComputerModel();
         var cpu = GetCpuName();
-        var gpu = GetGpuName();
+        var gpu = GetGpuName(type);
         return new DeviceInfo(type, model, cpu, gpu);
     }
 
@@ -86,19 +87,66 @@ public class DeviceDetector
         return "CPU";
     }
 
-    private static string GetGpuName()
+    private static string GetGpuName(DeviceType deviceType)
     {
+        static bool IsDiscrete(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return false;
+            }
+
+            var lowered = name.ToLowerInvariant();
+            if (lowered.Contains("nvidia") || lowered.Contains("geforce") || lowered.Contains("quadro"))
+            {
+                return true;
+            }
+
+            if (lowered.Contains("amd") || lowered.Contains("radeon") || lowered.Contains("rx ") || lowered.Contains("rtx"))
+            {
+                return true;
+            }
+
+            if (lowered.Contains("arc"))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
         try
         {
+            var controllers = new System.Collections.Generic.List<string>();
             using var searcher = new ManagementObjectSearcher("SELECT Name FROM Win32_VideoController");
             foreach (ManagementObject obj in searcher.Get())
             {
                 var name = Convert.ToString(obj["Name"]);
                 if (!string.IsNullOrWhiteSpace(name))
                 {
-                    return name;
+                    controllers.Add(name);
                 }
             }
+
+            if (controllers.Count == 0)
+            {
+                return "GPU";
+            }
+
+            var discrete = controllers.FirstOrDefault(IsDiscrete);
+            if (!string.IsNullOrWhiteSpace(discrete))
+            {
+                return discrete;
+            }
+
+            if (deviceType == DeviceType.Laptop)
+            {
+                return controllers[0];
+            }
+
+            // for desktops prefer any non Intel adapter if available
+            var nonIntel = controllers.FirstOrDefault(name => !name.Contains("Intel", StringComparison.OrdinalIgnoreCase));
+            return !string.IsNullOrWhiteSpace(nonIntel) ? nonIntel! : controllers[0];
         }
         catch
         {
