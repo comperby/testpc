@@ -12,8 +12,6 @@
     <PackageReference Include="System.Management" Version="9.0.0" />
     <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
     <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.4" />
-    <PackageReference Include="UIAutomationClient" Version="8.0.0" />
-    <PackageReference Include="UIAutomationTypes" Version="8.0.0" />
   </ItemGroup>
   <ItemGroup>
     <None Update="Assets\**\*">
