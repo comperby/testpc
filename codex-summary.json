@@ -1,0 +1,28 @@
+{
+  "timestamp": "2025-10-15T21:20:27.9582663+00:00",
+  "changed": "M\tServiceBench.App/ServiceBench.App.csproj",
+  "packages": "Project 'ServiceBench.App' has the following package references\r\n   [net8.0-windows10.0.19041]: \r\n   Top-level Package              Requested   Resolved\r\n   > LibreHardwareMonitorLib      0.9.4       0.9.4   \r\n   > System.Drawing.Common        8.0.0       8.0.0   \r\n   > System.Management            9.0.0       9.0.0   \r\n\r\n",
+  "diffs": {
+    "csproj": [
+      "diff --git a/ServiceBench.App/ServiceBench.App.csproj b/ServiceBench.App/ServiceBench.App.csproj",
+      "index a367280..e3d18d8 100644",
+      "--- a/ServiceBench.App/ServiceBench.App.csproj",
+      "+++ b/ServiceBench.App/ServiceBench.App.csproj",
+      "@@ -12,8 +12,6 @@",
+      "     <PackageReference Include=\"System.Management\" Version=\"9.0.0\" />",
+      "     <PackageReference Include=\"System.Drawing.Common\" Version=\"8.0.0\" />",
+      "     <PackageReference Include=\"LibreHardwareMonitorLib\" Version=\"0.9.4\" />",
+      "-    <PackageReference Include=\"UIAutomationClient\" Version=\"8.0.0\" />",
+      "-    <PackageReference Include=\"UIAutomationTypes\" Version=\"8.0.0\" />",
+      "   </ItemGroup>",
+      "   <ItemGroup>",
+      "     <None Update=\"Assets\\**\\*\">"
+    ],
+    "xaml": "",
+    "sln": null
+  },
+  "build": {
+    "log": "  Determining projects to restore...\r\n  All projects are up-to-date for restore.\r\nD:\\a\\testpc\\testpc\\ServiceBench.App\\ViewModels\\MainViewModel.cs(825,25): warning CS8602: Dereference of a possibly null reference. [D:\\a\\testpc\\testpc\\ServiceBench.App\\ServiceBench.App_ean3kdti_wpftmp.csproj]\r\nD:\\a\\testpc\\testpc\\ServiceBench.App\\ViewModels\\MainViewModel.cs(825,25): warning CS8602: Dereference of a possibly null reference. [D:\\a\\testpc\\testpc\\ServiceBench.App\\ServiceBench.App.csproj]\r\n  ServiceBench.App -> D:\\a\\testpc\\testpc\\ServiceBench.App\\bin\\Release\\net8.0-windows10.0.19041.0\\win-x64\\ServiceBench.App.dll\r\n\r\nBuild succeeded.\r\n\r\nD:\\a\\testpc\\testpc\\ServiceBench.App\\ViewModels\\MainViewModel.cs(825,25): warning CS8602: Dereference of a possibly null reference. [D:\\a\\testpc\\testpc\\ServiceBench.App\\ServiceBench.App_ean3kdti_wpftmp.csproj]\r\nD:\\a\\testpc\\testpc\\ServiceBench.App\\ViewModels\\MainViewModel.cs(825,25): warning CS8602: Dereference of a possibly null reference. [D:\\a\\testpc\\testpc\\ServiceBench.App\\ServiceBench.App.csproj]\r\n    2 Warning(s)\r\n    0 Error(s)\r\n\r\nTime Elapsed 00:00:15.39\r\n\r\nWorkload updates are available. Run `dotnet workload list` for more information.\r\n",
+    "ok": true
+  }
+}
